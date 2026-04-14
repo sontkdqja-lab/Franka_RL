@@ -15,6 +15,7 @@ class FrankaReachPPORunnerCfg(RslRlOnPolicyRunnerCfg):
     save_interval = 200
     experiment_name = "franka_pick_place"
     run_name = ""
+    obs_groups = {"actor": ["policy"], "critic": ["policy"]}
     # clip_actions = 10.0
     policy = RslRlPpoActorCriticCfg(
         init_noise_std=1.0,

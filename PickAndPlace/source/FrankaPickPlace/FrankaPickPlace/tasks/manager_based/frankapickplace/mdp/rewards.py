@@ -157,13 +157,12 @@ def placement_height_reward(
 def release_reward(
     env: ManagerBasedRLEnv,
     xy_threshold: float = 0.05,
-    min_release_height: float = 0.03,
-    max_release_height: float = 0.10,
+    height_threshold: float = 0.08,
     command_name: str = "drop_pose",
     robot_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
     object_cfg: SceneEntityCfg = SceneEntityCfg("object"),
 ) -> torch.Tensor:
-    """Reward opening the gripper when the cube hovers over the tabletop target."""
+    """Reward opening the gripper when object is correctly positioned above target."""
     robot: RigidObject = env.scene[robot_cfg.name]
     object: RigidObject = env.scene[object_cfg.name]
     command = env.command_manager.get_command(command_name)
@@ -173,57 +172,20 @@ def release_reward(
     target_pos_w, _ = combine_frame_transforms(
         robot.data.root_pos_w, robot.data.root_quat_w, target_pos_b
     )
-
+    
     object_pos_w = object.data.root_pos_w
-
-    # Open the gripper when the cube is aligned in XY and hovering just above the target.
+    
+    # Check if object is well-positioned
     xy_distance = torch.norm(object_pos_w[:, :2] - target_pos_w[:, :2], dim=1)
-    height_above_target = object_pos_w[:, 2] - target_pos_w[:, 2]
-
-    well_positioned = (
-        (xy_distance < xy_threshold)
-        & (height_above_target > min_release_height)
-        & (height_above_target < max_release_height)
-    ).float()
+    height_distance = torch.abs(object_pos_w[:, 2] - target_pos_w[:, 2])
+    
+    well_positioned = ((xy_distance < xy_threshold) & (height_distance < height_threshold)).float()
     
     # Gripper opening: 0.0 is closed, 0.04 is open
     gripper_joints = robot.data.joint_pos[:, -2:]
     gripper_opening = torch.clamp(torch.mean(gripper_joints, dim=1) / 0.04, 0.0, 1.0)
     
     return well_positioned * gripper_opening
-
-
-def placed_on_target_reward(
-    env: ManagerBasedRLEnv,
-    xy_threshold: float = 0.05,
-    height_threshold: float = 0.03,
-    speed_threshold: float = 0.20,
-    command_name: str = "drop_pose",
-    robot_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
-    object_cfg: SceneEntityCfg = SceneEntityCfg("object"),
-) -> torch.Tensor:
-    """Reward the cube for settling on the tabletop target after the gripper opens."""
-    robot: RigidObject = env.scene[robot_cfg.name]
-    object: RigidObject = env.scene[object_cfg.name]
-    command = env.command_manager.get_command(command_name)
-
-    target_pos_b = command[:, :3]
-    target_pos_w, _ = combine_frame_transforms(
-        robot.data.root_pos_w, robot.data.root_quat_w, target_pos_b
-    )
-
-    object_pos_w = object.data.root_pos_w
-    object_speed = torch.norm(object.data.root_vel_w[:, :3], dim=1)
-
-    xy_distance = torch.norm(object_pos_w[:, :2] - target_pos_w[:, :2], dim=1)
-    height_distance = torch.abs(object_pos_w[:, 2] - target_pos_w[:, 2])
-    on_target = ((xy_distance < xy_threshold) & (height_distance < height_threshold)).float()
-
-    gripper_joints = robot.data.joint_pos[:, -2:]
-    gripper_opening = torch.clamp(torch.mean(gripper_joints, dim=1) / 0.04, 0.0, 1.0)
-    settled_reward = torch.exp(-object_speed / speed_threshold)
-
-    return on_target * gripper_opening * settled_reward
 
 # -----------------------------------------------------------------------
 

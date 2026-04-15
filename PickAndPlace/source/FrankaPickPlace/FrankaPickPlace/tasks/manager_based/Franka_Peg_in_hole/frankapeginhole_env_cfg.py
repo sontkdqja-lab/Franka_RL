@@ -28,9 +28,11 @@ from isaaclab_assets import FRANKA_PANDA_CFG  # isort: skip
 from . import mdp
 
 
-PEG_RADIUS = 0.015
-PEG_HEIGHT = 0.12
+PEG_WIDTH = 0.05
+PEG_HEIGHT = 0.05
 PEG_HALF_LENGTH = PEG_HEIGHT * 0.5
+BASE_PEG_WIDTH = 0.03
+PEG_SIZE_SCALE = PEG_WIDTH / BASE_PEG_WIDTH
 TABLE_SURFACE_Z = 0.03
 PEG_START_Z = TABLE_SURFACE_Z + PEG_HALF_LENGTH
 HOLE_CENTER_X = 0.60
@@ -38,9 +40,20 @@ HOLE_CENTER_Y = 0.00
 HOLE_TOP_Z = 0.11
 SOCKET_WALL_HEIGHT = 0.08
 SOCKET_WALL_Z = TABLE_SURFACE_Z + SOCKET_WALL_HEIGHT * 0.5
-SOCKET_INNER_HALF_EXTENT = 0.022
+SOCKET_SIDE_CLEARANCE = 0.007
+SOCKET_INNER_HALF_EXTENT = PEG_WIDTH * 0.5 + SOCKET_SIDE_CLEARANCE
 SOCKET_WALL_THICKNESS = 0.015
 SOCKET_OUTER_SPAN = 2 * (SOCKET_INNER_HALF_EXTENT + SOCKET_WALL_THICKNESS)
+LIFT_MINIMAL_HEIGHT = 0.10
+GRASP_DISTANCE_THRESHOLD = 0.045 * PEG_SIZE_SCALE
+ALIGN_COARSE_STD = 0.10 * PEG_SIZE_SCALE
+ALIGN_FINE_STD = 0.03 * PEG_SIZE_SCALE
+PRE_INSERT_XY_THRESHOLD = 0.025 * PEG_SIZE_SCALE
+PRE_INSERT_TARGET_HEIGHT_OFFSET = PEG_HALF_LENGTH
+INSERT_XY_THRESHOLD = 0.020 * PEG_SIZE_SCALE
+SUCCESS_XY_THRESHOLD = 0.018 * PEG_SIZE_SCALE
+DESIRED_INSERT_DEPTH = 0.060
+SUCCESS_INSERT_DEPTH = 0.055
 
 
 @configclass
@@ -62,12 +75,11 @@ class FrankaPegInHoleSceneCfg(InteractiveSceneCfg):
     robot: ArticulationCfg = FRANKA_PANDA_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
 
     peg = RigidObjectCfg(
-        prim_path="{ENV_REGEX_NS}/Peg",
+        prim_path="{ENV_REGEX_NS}/Cube",
         init_state=RigidObjectCfg.InitialStateCfg(pos=[0.45, -0.10, PEG_START_Z], rot=[1.0, 0.0, 0.0, 0.0]),
-        spawn=sim_utils.CylinderCfg(
-            radius=PEG_RADIUS,
-            height=PEG_HEIGHT,
-            axis="Z",
+        spawn=sim_utils.CuboidCfg(
+            size=[PEG_WIDTH, PEG_WIDTH, PEG_HEIGHT],
+            semantic_tags=[("color", "red")],
             rigid_props=RigidBodyPropertiesCfg(
                 solver_position_iteration_count=16,
                 solver_velocity_iteration_count=1,
@@ -76,9 +88,9 @@ class FrankaPegInHoleSceneCfg(InteractiveSceneCfg):
                 max_depenetration_velocity=5.0,
                 disable_gravity=False,
             ),
+            visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.0, 1.0, 0.0), metallic=0.2),
             collision_props=sim_utils.CollisionPropertiesCfg(),
-            physics_material=sim_utils.RigidBodyMaterialCfg(static_friction=1.2, dynamic_friction=1.0),
-            visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.20, 0.70, 0.95), metallic=0.1),
+            physics_material=sim_utils.RigidBodyMaterialCfg(static_friction=1.0),
         ),
     )
 
@@ -239,7 +251,7 @@ class EventCfg:
         params={
             "pose_range": {"x": (-0.05, 0.03), "y": (-0.12, 0.12), "z": (0.0, 0.0)},
             "velocity_range": {},
-            "asset_cfg": SceneEntityCfg("peg", body_names="Peg"),
+            "asset_cfg": SceneEntityCfg("peg", body_names="Cube"),
         },
     )
 
@@ -248,65 +260,79 @@ class EventCfg:
 class RewardsCfg:
     """Stage-shaped rewards for peg insertion."""
 
-    reaching_peg = RewTerm(func=mdp.peg_ee_distance, params={"std": 0.10}, weight=1.5)
+    reaching_peg = RewTerm(func=mdp.peg_ee_distance, params={"std": 0.10}, weight=1.0)
 
     grasping_peg = RewTerm(
         func=mdp.grasp_peg_reward,
-        params={"distance_threshold": 0.045},
-        weight=6.0,
+        params={"distance_threshold": GRASP_DISTANCE_THRESHOLD},
+        weight=5.0,
     )
 
     lifting_peg = RewTerm(
         func=mdp.peg_is_lifted,
-        params={"minimal_height": 0.14},
-        weight=8.0,
+        params={"minimal_height": LIFT_MINIMAL_HEIGHT},
+        weight=10.0,
     )
 
-    upright_peg = RewTerm(func=mdp.peg_upright_reward, weight=2.0)
+    upright_peg = RewTerm(
+        func=mdp.peg_upright_lifted_reward,
+        params={"minimal_height": LIFT_MINIMAL_HEIGHT},
+        weight=1.0,
+    )
 
     align_hole_coarse = RewTerm(
         func=mdp.peg_hole_xy_alignment_reward,
-        params={"std": 0.10, "minimal_height": 0.14, "command_name": "hole_pose", "peg_half_length": PEG_HALF_LENGTH},
-        weight=10.0,
+        params={
+            "std": ALIGN_COARSE_STD,
+            "minimal_height": LIFT_MINIMAL_HEIGHT,
+            "command_name": "hole_pose",
+            "peg_half_length": PEG_HALF_LENGTH,
+        },
+        weight=2.0,
     )
 
     align_hole_fine = RewTerm(
         func=mdp.peg_hole_xy_alignment_reward,
-        params={"std": 0.03, "minimal_height": 0.14, "command_name": "hole_pose", "peg_half_length": PEG_HALF_LENGTH},
-        weight=12.0,
+        params={
+            "std": ALIGN_FINE_STD,
+            "minimal_height": LIFT_MINIMAL_HEIGHT,
+            "command_name": "hole_pose",
+            "peg_half_length": PEG_HALF_LENGTH,
+        },
+        weight=2.0,
     )
 
     pre_insert = RewTerm(
         func=mdp.peg_pre_insertion_reward,
         params={
-            "xy_threshold": 0.025,
-            "target_height_offset": 0.015,
+            "xy_threshold": PRE_INSERT_XY_THRESHOLD,
+            "target_height_offset": PRE_INSERT_TARGET_HEIGHT_OFFSET,
             "command_name": "hole_pose",
             "peg_half_length": PEG_HALF_LENGTH,
         },
-        weight=14.0,
+        weight=1.0,
     )
 
     insertion = RewTerm(
         func=mdp.peg_insertion_reward,
         params={
-            "xy_threshold": 0.020,
-            "desired_depth": 0.060,
+            "xy_threshold": INSERT_XY_THRESHOLD,
+            "desired_depth": DESIRED_INSERT_DEPTH,
             "command_name": "hole_pose",
             "peg_half_length": PEG_HALF_LENGTH,
         },
-        weight=24.0,
+        weight=2.0,
     )
 
     success_bonus = RewTerm(
         func=mdp.peg_insertion_success_reward,
         params={
-            "xy_threshold": 0.018,
-            "success_depth": 0.055,
+            "xy_threshold": SUCCESS_XY_THRESHOLD,
+            "success_depth": SUCCESS_INSERT_DEPTH,
             "command_name": "hole_pose",
             "peg_half_length": PEG_HALF_LENGTH,
         },
-        weight=40.0,
+        weight=5.0,
     )
 
     action_rate = RewTerm(func=mdp.action_rate_l2, weight=-1e-4)
@@ -331,8 +357,8 @@ class TerminationsCfg:
     peg_inserted = DoneTerm(
         func=mdp.peg_inserted,
         params={
-            "xy_threshold": 0.018,
-            "success_depth": 0.055,
+            "xy_threshold": SUCCESS_XY_THRESHOLD,
+            "success_depth": SUCCESS_INSERT_DEPTH,
             "command_name": "hole_pose",
             "peg_half_length": PEG_HALF_LENGTH,
         },
@@ -343,19 +369,29 @@ class TerminationsCfg:
 class CurriculumCfg:
     """Simple curriculum to increase precision-related rewards over time."""
 
+    align_hole_coarse_weight = CurrTerm(
+        func=mdp.modify_reward_weight,
+        params={"term_name": "align_hole_coarse", "weight": 10.0, "num_steps": 12000},
+    )
+
+    align_hole_fine_weight = CurrTerm(
+        func=mdp.modify_reward_weight,
+        params={"term_name": "align_hole_fine", "weight": 12.0, "num_steps": 18000},
+    )
+
     pre_insert_weight = CurrTerm(
         func=mdp.modify_reward_weight,
-        params={"term_name": "pre_insert", "weight": 20.0, "num_steps": 15000},
+        params={"term_name": "pre_insert", "weight": 14.0, "num_steps": 15000},
     )
 
     insertion_weight = CurrTerm(
         func=mdp.modify_reward_weight,
-        params={"term_name": "insertion", "weight": 35.0, "num_steps": 25000},
+        params={"term_name": "insertion", "weight": 24.0, "num_steps": 25000},
     )
 
     success_bonus_weight = CurrTerm(
         func=mdp.modify_reward_weight,
-        params={"term_name": "success_bonus", "weight": 60.0, "num_steps": 25000},
+        params={"term_name": "success_bonus", "weight": 40.0, "num_steps": 25000},
     )
 
     action_rate = CurrTerm(
@@ -389,7 +425,7 @@ class FrankaPegInHoleEnvCfg(ManagerBasedRLEnvCfg):
         self.sim.dt = 0.01
         self.sim.physx.bounce_threshold_velocity = 0.01
         self.sim.physx.gpu_found_lost_aggregate_pairs_capacity = 1024 * 1024 * 4
-        self.sim.physx.gpu_total_aggregate_pairs_capacity = 16 * 1024
+        self.sim.physx.gpu_total_aggregate_pairs_capacity = 32 * 1024
         self.sim.physx.friction_correlation_distance = 0.00625
 
 

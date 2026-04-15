@@ -16,6 +16,7 @@ from isaaclab.managers import RewardTermCfg as RewTerm
 from isaaclab.managers import SceneEntityCfg
 from isaaclab.managers import TerminationTermCfg as DoneTerm
 from isaaclab.scene import InteractiveSceneCfg
+from isaaclab.sim.spawners.from_files.from_files_cfg import GroundPlaneCfg, UsdFileCfg
 from isaaclab.utils import configclass
 from isaaclab.utils.assets import ISAAC_NUCLEUS_DIR
 
@@ -23,10 +24,14 @@ from isaaclab_assets import FRANKA_PANDA_CFG  # isort: skip
 from isaaclab.markers.config import FRAME_MARKER_CFG  # isort: skip
 from isaaclab.assets import RigidObjectCfg
 from isaaclab.sim.schemas.schemas_cfg import RigidBodyPropertiesCfg
-from isaaclab.sim.spawners.from_files.from_files_cfg import GroundPlaneCfg, UsdFileCfg
 from isaaclab.sensors.frame_transformer.frame_transformer_cfg import FrameTransformerCfg
 from isaaclab.sensors.frame_transformer.frame_transformer_cfg import OffsetCfg
 from . import mdp
+
+
+CUBE_SIZE = 0.05
+CUBE_START_Z = CUBE_SIZE * 0.5
+LIFT_MINIMAL_HEIGHT = 0.04
 
 
 ##
@@ -45,21 +50,21 @@ class FrankaSceneCfg(InteractiveSceneCfg):
         spawn=GroundPlaneCfg(),
     )
 
+    # robots
+    robot: ArticulationCfg = FRANKA_PANDA_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
+
     table = AssetBaseCfg(
         prim_path="{ENV_REGEX_NS}/Table",
         init_state=AssetBaseCfg.InitialStateCfg(pos=[0.5, 0.0, 0.0], rot=[0.707, 0.0, 0.0, 0.707]),
         spawn=UsdFileCfg(usd_path=f"{ISAAC_NUCLEUS_DIR}/Props/Mounts/SeattleLabTable/table_instanceable.usd"),
     )
 
-    # robots
-    robot: ArticulationCfg = FRANKA_PANDA_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
-
     # objects
     object = RigidObjectCfg(
         prim_path="{ENV_REGEX_NS}/Cube",
-        init_state=RigidObjectCfg.InitialStateCfg(pos=[0.45, 0.0, 0.055], rot=[1, 0, 0, 0]),
+        init_state=RigidObjectCfg.InitialStateCfg(pos=[0.45, 0, CUBE_START_Z], rot=[1, 0, 0, 0]),
         spawn=sim_utils.CuboidCfg(
-            size=[0.05, 0.05, 0.05],
+            size=[CUBE_SIZE, CUBE_SIZE, CUBE_SIZE],
             semantic_tags=[("color", "red")],
             rigid_props=RigidBodyPropertiesCfg(
                 solver_position_iteration_count=16,
@@ -116,17 +121,16 @@ class FrankaSceneCfg(InteractiveSceneCfg):
 class CommandsCfg:
     """Command terms for the MDP."""
 
-    # Place location on the tabletop. The policy is rewarded for hovering slightly
-    # above this pose and then opening the gripper to let the cube settle onto it.
+    # Place location on the tabletop.
     drop_pose = mdp.UniformPoseCommandCfg(
         asset_name="robot",
         body_name="panda_hand",
         resampling_time_range=(8.0, 8.0),
         debug_vis=True,
         ranges=mdp.UniformPoseCommandCfg.Ranges(
-            pos_x=(0.42, 0.58),
-            pos_y=(-0.20, 0.20),
-            pos_z=(0.055, 0.055),
+            pos_x=(0.40, 0.60),
+            pos_y=(-0.25, 0.25),
+            pos_z=(0.25, 0.50),
             roll=(0.0, 0.0),
             pitch=(0.0, 0.0),
             yaw=(0.0, 0.0),
@@ -189,7 +193,7 @@ class EventCfg:
         params={
             "pose_range": {"x": (-0.1, 0.1), "y": (-0.25, 0.25), "z": (0.0, 0.0)},
             "velocity_range": {},
-            "asset_cfg": SceneEntityCfg("object", body_names="Cube"),
+            "asset_cfg": SceneEntityCfg("object"),
         },
     )
 
@@ -212,41 +216,40 @@ class RewardsCfg:
 
     # Stage 3: Lifting
     lifting_object = RewTerm(
-        func=mdp.object_is_lifted, params={"minimal_height": 0.10}, weight=10.0
+        func=mdp.object_is_lifted, params={"minimal_height": LIFT_MINIMAL_HEIGHT}, weight=10.0
     )
 
     # Stage 4: Transport (multi-scale for better gradients)
     object_goal_tracking_coarse = RewTerm(
         func=mdp.object_goal_distance,
-        params={"std": 0.5, "minimal_height": 0.10, "command_name": "drop_pose"},
+        params={"std": 0.5, "minimal_height": LIFT_MINIMAL_HEIGHT, "command_name": "drop_pose"},
         weight=8.0,
     )
 
     object_goal_tracking_fine = RewTerm(
         func=mdp.object_goal_distance,
-        params={"std": 0.1, "minimal_height": 0.10, "command_name": "drop_pose"},
+        params={"std": 0.1, "minimal_height": LIFT_MINIMAL_HEIGHT, "command_name": "drop_pose"},
         weight=8.0,
     )
 
-    # Stage 5: Hover above the tabletop target before release.
+    # Stage 5: Placement (height-aware)
     placement_reward = RewTerm(
         func=mdp.placement_height_reward,
-        params={"xy_threshold": 0.08, "target_height_offset": 0.06, "command_name": "drop_pose"},
+        params={"xy_threshold": 0.08, "target_height_offset": 0.05, "command_name": "drop_pose"},
         weight=15.0,
     )
 
-    # Stage 6: Open the gripper while the cube is hovering above the tabletop target.
+    # Stage 6: Release
     release_reward = RewTerm(
         func=mdp.release_reward,
-        params={"xy_threshold": 0.05, "min_release_height": 0.03, "max_release_height": 0.10, "command_name": "drop_pose"},
+        params={"xy_threshold": 0.05, "height_threshold": 0.08, "command_name": "drop_pose"},
         weight=20.0,
     )
 
-    # Stage 7: Reward the cube for settling on the tabletop target after release.
-    placed_on_target = RewTerm(
-        func=mdp.placed_on_target_reward,
-        params={"xy_threshold": 0.05, "height_threshold": 0.03, "speed_threshold": 0.20, "command_name": "drop_pose"},
-        weight=25.0,
+    dropped_reward = RewTerm(
+        func=mdp.drop_object_reward,
+        params={"distance_threshold": 0.10, "command_name": "drop_pose"},
+        weight=10.0,
     )
 
     # reward_reach = RewTerm(
@@ -311,11 +314,6 @@ class CurriculumCfg:
     release_weight = CurrTerm(
         func=mdp.modify_reward_weight,
         params={"term_name": "release_reward", "weight": 40.0, "num_steps": 25000},
-    )
-
-    placed_on_target_weight = CurrTerm(
-        func=mdp.modify_reward_weight,
-        params={"term_name": "placed_on_target", "weight": 50.0, "num_steps": 25000},
     )
 
     # Gradually increase action penalties to encourage smooth motion

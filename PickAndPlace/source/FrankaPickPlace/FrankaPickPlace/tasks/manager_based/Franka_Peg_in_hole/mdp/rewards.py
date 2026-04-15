@@ -107,6 +107,18 @@ def peg_upright_reward(
     return _peg_upright_projection(env, peg_cfg=peg_cfg)
 
 
+def peg_upright_lifted_reward(
+    env: ManagerBasedRLEnv,
+    minimal_height: float,
+    peg_cfg: SceneEntityCfg = SceneEntityCfg("peg"),
+) -> torch.Tensor:
+    """Reward keeping the peg upright only after it has been lifted."""
+    peg: RigidObject = env.scene[peg_cfg.name]
+    lifted = peg.data.root_pos_w[:, 2] > minimal_height
+    upright = _peg_upright_projection(env, peg_cfg=peg_cfg)
+    return lifted.float() * upright
+
+
 def peg_hole_xy_alignment_reward(
     env: ManagerBasedRLEnv,
     std: float,

@@ -32,6 +32,16 @@ from . import mdp
 CUBE_SIZE = 0.05
 CUBE_START_Z = CUBE_SIZE * 0.5
 LIFT_MINIMAL_HEIGHT = 0.04
+TARGET_BOX_CENTER_X = 0.58
+TARGET_BOX_CENTER_Y = -0.36
+TARGET_BOX_INNER_SIZE = 0.12
+TARGET_BOX_WALL_THICKNESS = 0.01
+TARGET_BOX_WALL_HEIGHT = 0.06
+TARGET_BOX_FLOOR_THICKNESS = 0.01
+TARGET_BOX_FLOOR_CENTER_Z = TARGET_BOX_FLOOR_THICKNESS * 0.5
+TARGET_BOX_WALL_CENTER_Z = TARGET_BOX_FLOOR_THICKNESS + TARGET_BOX_WALL_HEIGHT * 0.5
+TARGET_BOX_OUTER_SPAN = TARGET_BOX_INNER_SIZE + 2.0 * TARGET_BOX_WALL_THICKNESS
+TARGET_BOX_PLACE_Z = TARGET_BOX_FLOOR_THICKNESS + CUBE_START_Z
 
 
 ##
@@ -82,6 +92,97 @@ class FrankaSceneCfg(InteractiveSceneCfg):
         ),
     )
 
+    target_box_floor = RigidObjectCfg(
+        prim_path="{ENV_REGEX_NS}/TargetBoxFloor",
+        init_state=RigidObjectCfg.InitialStateCfg(
+            pos=[TARGET_BOX_CENTER_X, TARGET_BOX_CENTER_Y, TARGET_BOX_FLOOR_CENTER_Z],
+            rot=[1.0, 0.0, 0.0, 0.0],
+        ),
+        spawn=sim_utils.CuboidCfg(
+            size=[TARGET_BOX_OUTER_SPAN, TARGET_BOX_OUTER_SPAN, TARGET_BOX_FLOOR_THICKNESS],
+            rigid_props=RigidBodyPropertiesCfg(kinematic_enabled=True, disable_gravity=True),
+            collision_props=sim_utils.CollisionPropertiesCfg(),
+            physics_material=sim_utils.RigidBodyMaterialCfg(static_friction=1.0, dynamic_friction=1.0),
+            visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.72, 0.70, 0.62), metallic=0.05),
+        ),
+    )
+
+    target_box_left_wall = RigidObjectCfg(
+        prim_path="{ENV_REGEX_NS}/TargetBoxLeftWall",
+        init_state=RigidObjectCfg.InitialStateCfg(
+            pos=[
+                TARGET_BOX_CENTER_X - (TARGET_BOX_INNER_SIZE * 0.5 + TARGET_BOX_WALL_THICKNESS * 0.5),
+                TARGET_BOX_CENTER_Y,
+                TARGET_BOX_WALL_CENTER_Z,
+            ],
+            rot=[1.0, 0.0, 0.0, 0.0],
+        ),
+        spawn=sim_utils.CuboidCfg(
+            size=[TARGET_BOX_WALL_THICKNESS, TARGET_BOX_OUTER_SPAN, TARGET_BOX_WALL_HEIGHT],
+            rigid_props=RigidBodyPropertiesCfg(kinematic_enabled=True, disable_gravity=True),
+            collision_props=sim_utils.CollisionPropertiesCfg(),
+            physics_material=sim_utils.RigidBodyMaterialCfg(static_friction=1.0, dynamic_friction=1.0),
+            visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.55, 0.43, 0.28), metallic=0.1),
+        ),
+    )
+
+    target_box_right_wall = RigidObjectCfg(
+        prim_path="{ENV_REGEX_NS}/TargetBoxRightWall",
+        init_state=RigidObjectCfg.InitialStateCfg(
+            pos=[
+                TARGET_BOX_CENTER_X + (TARGET_BOX_INNER_SIZE * 0.5 + TARGET_BOX_WALL_THICKNESS * 0.5),
+                TARGET_BOX_CENTER_Y,
+                TARGET_BOX_WALL_CENTER_Z,
+            ],
+            rot=[1.0, 0.0, 0.0, 0.0],
+        ),
+        spawn=sim_utils.CuboidCfg(
+            size=[TARGET_BOX_WALL_THICKNESS, TARGET_BOX_OUTER_SPAN, TARGET_BOX_WALL_HEIGHT],
+            rigid_props=RigidBodyPropertiesCfg(kinematic_enabled=True, disable_gravity=True),
+            collision_props=sim_utils.CollisionPropertiesCfg(),
+            physics_material=sim_utils.RigidBodyMaterialCfg(static_friction=1.0, dynamic_friction=1.0),
+            visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.55, 0.43, 0.28), metallic=0.1),
+        ),
+    )
+
+    target_box_front_wall = RigidObjectCfg(
+        prim_path="{ENV_REGEX_NS}/TargetBoxFrontWall",
+        init_state=RigidObjectCfg.InitialStateCfg(
+            pos=[
+                TARGET_BOX_CENTER_X,
+                TARGET_BOX_CENTER_Y + (TARGET_BOX_INNER_SIZE * 0.5 + TARGET_BOX_WALL_THICKNESS * 0.5),
+                TARGET_BOX_WALL_CENTER_Z,
+            ],
+            rot=[1.0, 0.0, 0.0, 0.0],
+        ),
+        spawn=sim_utils.CuboidCfg(
+            size=[TARGET_BOX_OUTER_SPAN, TARGET_BOX_WALL_THICKNESS, TARGET_BOX_WALL_HEIGHT],
+            rigid_props=RigidBodyPropertiesCfg(kinematic_enabled=True, disable_gravity=True),
+            collision_props=sim_utils.CollisionPropertiesCfg(),
+            physics_material=sim_utils.RigidBodyMaterialCfg(static_friction=1.0, dynamic_friction=1.0),
+            visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.55, 0.43, 0.28), metallic=0.1),
+        ),
+    )
+
+    target_box_back_wall = RigidObjectCfg(
+        prim_path="{ENV_REGEX_NS}/TargetBoxBackWall",
+        init_state=RigidObjectCfg.InitialStateCfg(
+            pos=[
+                TARGET_BOX_CENTER_X,
+                TARGET_BOX_CENTER_Y - (TARGET_BOX_INNER_SIZE * 0.5 + TARGET_BOX_WALL_THICKNESS * 0.5),
+                TARGET_BOX_WALL_CENTER_Z,
+            ],
+            rot=[1.0, 0.0, 0.0, 0.0],
+        ),
+        spawn=sim_utils.CuboidCfg(
+            size=[TARGET_BOX_OUTER_SPAN, TARGET_BOX_WALL_THICKNESS, TARGET_BOX_WALL_HEIGHT],
+            rigid_props=RigidBodyPropertiesCfg(kinematic_enabled=True, disable_gravity=True),
+            collision_props=sim_utils.CollisionPropertiesCfg(),
+            physics_material=sim_utils.RigidBodyMaterialCfg(static_friction=1.0, dynamic_friction=1.0),
+            visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.55, 0.43, 0.28), metallic=0.1),
+        ),
+    )
+
     # Listens to the required transforms, adding visualization markers to end-effector frame
     ee_frame = FrameTransformerCfg(
         prim_path="{ENV_REGEX_NS}/Robot/panda_link0",  # root of robot (base_link)
@@ -121,20 +222,48 @@ class FrankaSceneCfg(InteractiveSceneCfg):
 class CommandsCfg:
     """Command terms for the MDP."""
 
-    # Place location on the tabletop.
+    # Existing tabletop target reused as the intermediate waypoint.
     drop_pose = mdp.UniformPoseCommandCfg(
         asset_name="robot",
         body_name="panda_hand",
-        resampling_time_range=(8.0, 8.0),
-        debug_vis=True,
+        resampling_time_range=(1.0e9, 1.0e9),
+        debug_vis=False,
         ranges=mdp.UniformPoseCommandCfg.Ranges(
-            pos_x=(0.40, 0.60),
-            pos_y=(-0.25, 0.25),
-            pos_z=(0.25, 0.50),
+            pos_x=(0.50, 0.50),
+            pos_y=(0.00, 0.00),
+            pos_z=(0.30, 0.30),
             roll=(0.0, 0.0),
             pitch=(0.0, 0.0),
             yaw=(0.0, 0.0),
         ),
+    )
+    box_pose = mdp.UniformPoseCommandCfg(
+        asset_name="robot",
+        body_name="panda_hand",
+        resampling_time_range=(1.0e9, 1.0e9),
+        debug_vis=False,
+        ranges=mdp.UniformPoseCommandCfg.Ranges(
+            pos_x=(TARGET_BOX_CENTER_X, TARGET_BOX_CENTER_X),
+            pos_y=(TARGET_BOX_CENTER_Y, TARGET_BOX_CENTER_Y),
+            pos_z=(TARGET_BOX_PLACE_Z, TARGET_BOX_PLACE_Z),
+            roll=(0.0, 0.0),
+            pitch=(0.0, 0.0),
+            yaw=(0.0, 0.0),
+        ),
+    )
+    transport_target = mdp.StagedTransportPoseCommandCfg(
+        asset_name="robot",
+        body_name="panda_hand",
+        object_name="object",
+        waypoint_command_name="drop_pose",
+        drop_command_name="box_pose",
+        resampling_time_range=(1.0e9, 1.0e9),
+        debug_vis=True,
+        hold_duration_s=0.0,
+        minimal_height=LIFT_MINIMAL_HEIGHT,
+        waypoint_xy_threshold=0.03,
+        waypoint_z_threshold=0.03,
+        waypoint_max_speed=0.05,
     )
 
 
@@ -168,8 +297,9 @@ class ObservationsCfg:
         joint_vel = ObsTerm(func=mdp.joint_vel_rel)
         object_position = ObsTerm(func=mdp.object_position_in_robot_root_frame)
 
-        place_target = ObsTerm(
-            func=mdp.generated_commands, params={"command_name": "drop_pose"}
+        place_target = ObsTerm(func=mdp.generated_commands, params={"command_name": "transport_target"})
+        transport_phase = ObsTerm(
+            func=mdp.staged_command_phase, params={"command_name": "transport_target"}
         )
         actions = ObsTerm(func=mdp.last_action)
 
@@ -214,6 +344,18 @@ class RewardsCfg:
         weight=5.0
     )
 
+    # # Stage 2: Grasping (gated version)
+    # grasping_object_gated = RewTerm(
+    #     func=mdp.grasp_reward_gated,
+    #     params={
+    #         "distance_threshold": 0.03,
+    #         "target_xy_threshold": 0.02,
+    #         "target_z_threshold": 0.02,
+    #         "command_name": "drop_pose",
+    #     },
+    #     weight=5.0,
+    # )
+
     # Stage 3: Lifting
     lifting_object = RewTerm(
         func=mdp.object_is_lifted, params={"minimal_height": LIFT_MINIMAL_HEIGHT}, weight=10.0
@@ -222,35 +364,66 @@ class RewardsCfg:
     # Stage 4: Transport (multi-scale for better gradients)
     object_goal_tracking_coarse = RewTerm(
         func=mdp.object_goal_distance,
-        params={"std": 0.5, "minimal_height": LIFT_MINIMAL_HEIGHT, "command_name": "drop_pose"},
+        params={"std": 0.5, "minimal_height": LIFT_MINIMAL_HEIGHT, "command_name": "transport_target"},
         weight=8.0,
     )
 
     object_goal_tracking_fine = RewTerm(
         func=mdp.object_goal_distance,
-        params={"std": 0.1, "minimal_height": LIFT_MINIMAL_HEIGHT, "command_name": "drop_pose"},
+        params={"std": 0.1, "minimal_height": LIFT_MINIMAL_HEIGHT, "command_name": "transport_target"},
         weight=8.0,
+    )
+
+    waypoint_hold_reward = RewTerm(
+        func=mdp.waypoint_hold_bonus,
+        params={"command_name": "transport_target"},
+        weight=12.0,
+    )
+
+    premature_box_penalty = RewTerm(
+        func=mdp.premature_goal_penalty,
+        params={
+            "command_name": "box_pose",
+            "staged_command_name": "transport_target",
+            "std": 0.06,
+            "minimal_height": LIFT_MINIMAL_HEIGHT,
+        },
+        weight=-8.0,
     )
 
     # Stage 5: Placement (height-aware)
     placement_reward = RewTerm(
         func=mdp.placement_height_reward,
-        params={"xy_threshold": 0.08, "target_height_offset": 0.05, "command_name": "drop_pose"},
+        params={"xy_threshold": 0.02, "target_height_offset": 0.02, "command_name": "transport_target"},
         weight=15.0,
     )
 
     # Stage 6: Release
     release_reward = RewTerm(
         func=mdp.release_reward,
-        params={"xy_threshold": 0.05, "height_threshold": 0.08, "command_name": "drop_pose"},
+        params={"xy_threshold": 0.02, "height_threshold": 0.02, "command_name": "transport_target"},
         weight=20.0,
     )
-
-    dropped_reward = RewTerm(
-        func=mdp.drop_object_reward,
-        params={"distance_threshold": 0.10, "command_name": "drop_pose"},
-        weight=10.0,
+    
+    # Stage 7: True placed success
+    placed_success_reward = RewTerm(
+        func=mdp.placed_success_reward,
+        params={
+            "xy_threshold": 0.02,
+            "z_threshold": 0.02,
+            "linear_vel_threshold": 0.05,
+            "angular_vel_threshold": 0.10,
+            "gripper_open_threshold": 0.03,
+            "command_name": "transport_target",
+        },
+        weight=40.0,
     )
+
+    # dropped_reward = RewTerm(
+    #     func=mdp.drop_object_reward,
+    #     params={"distance_threshold": 0.10, "command_name": "drop_pose"},
+    #     weight=10.0,
+    # )
 
     # reward_reach = RewTerm(
     #     mdp.reward_stage_reach,
@@ -296,9 +469,17 @@ class TerminationsCfg:
 
     time_out = DoneTerm(func=mdp.time_out, time_out=True)
 
-    # object_reaching_goal = DoneTerm(
-    #     func=mdp.object_reached_goal, params={"command_name": "drop_pose"}
-    # )
+    object_reaching_goal = DoneTerm(
+        func=mdp.object_placed_success,
+        params={
+            "command_name": "transport_target",
+            "xy_threshold": 0.02,
+            "z_threshold": 0.02,
+            "linear_vel_threshold": 0.05,
+            "angular_vel_threshold": 0.10,
+            "gripper_open_threshold": 0.03,
+        },
+    )
 
 
 @configclass
@@ -353,7 +534,7 @@ class FrankPickPlaceEnvCfg(ManagerBasedRLEnvCfg):
         self.decimation = 2
         self.sim.render_interval = self.decimation
         self.episode_length_s = (
-            5.0  # Increased from 5.0 to allow time for pick and place
+            8.0  # Allow pick, 2-second waypoint hold, and final placement.
         )
         # simulation settings
         self.sim.dt = 0.01

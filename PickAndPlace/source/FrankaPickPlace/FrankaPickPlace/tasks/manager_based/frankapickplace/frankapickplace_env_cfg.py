@@ -245,7 +245,7 @@ class CommandsCfg:
         ranges=mdp.UniformPoseCommandCfg.Ranges(
             pos_x=(TARGET_BOX_CENTER_X, TARGET_BOX_CENTER_X),
             pos_y=(TARGET_BOX_CENTER_Y, TARGET_BOX_CENTER_Y),
-            pos_z=(TARGET_BOX_PLACE_Z, TARGET_BOX_PLACE_Z),
+            pos_z=(TARGET_BOX_PLACE_Z + 0.08 , TARGET_BOX_PLACE_Z + 0.08 ),
             roll=(0.0, 0.0),
             pitch=(0.0, 0.0),
             yaw=(0.0, 0.0),
@@ -328,6 +328,7 @@ class EventCfg:
     )
 
 
+
 @configclass
 class RewardsCfg:
     """Reward terms for the MDP."""
@@ -335,26 +336,19 @@ class RewardsCfg:
     # Stage 1: Reaching
     reaching_object = RewTerm(
         func=mdp.object_ee_distance, params={"std": 0.1}, weight=1.0
-    )
+    ) 
+
+    
 
     # Stage 2: Grasping
     grasping_object = RewTerm(
-        func=mdp.grasp_reward, 
-        params={"distance_threshold": 0.04},
+        func=mdp.grasp_reward,
+        params={
+            "distance_threshold": 0.04,
+        },
         weight=5.0
     )
 
-    # # Stage 2: Grasping (gated version)
-    # grasping_object_gated = RewTerm(
-    #     func=mdp.grasp_reward_gated,
-    #     params={
-    #         "distance_threshold": 0.03,
-    #         "target_xy_threshold": 0.02,
-    #         "target_z_threshold": 0.02,
-    #         "command_name": "drop_pose",
-    #     },
-    #     weight=5.0,
-    # )
 
     # Stage 3: Lifting
     lifting_object = RewTerm(
@@ -372,6 +366,17 @@ class RewardsCfg:
         func=mdp.object_goal_distance,
         params={"std": 0.1, "minimal_height": LIFT_MINIMAL_HEIGHT, "command_name": "transport_target"},
         weight=8.0,
+    )
+
+    target_stability = RewTerm(
+        func=mdp.target_stability_reward,
+        params={
+            "command_name": "transport_target",
+            "proximity_std": 0.04,
+            "joint_vel_std": 0.6,
+            "action_rate_std": 0.08,
+        },
+        weight=6.0,
     )
 
     waypoint_hold_reward = RewTerm(
@@ -401,23 +406,40 @@ class RewardsCfg:
     # Stage 6: Release
     release_reward = RewTerm(
         func=mdp.release_reward,
-        params={"xy_threshold": 0.02, "height_threshold": 0.02, "command_name": "transport_target"},
-        weight=20.0,
-    )
-    
-    # Stage 7: True placed success
-    placed_success_reward = RewTerm(
-        func=mdp.placed_success_reward,
         params={
             "xy_threshold": 0.02,
-            "z_threshold": 0.02,
-            "linear_vel_threshold": 0.05,
-            "angular_vel_threshold": 0.10,
-            "gripper_open_threshold": 0.03,
+            "height_threshold": 0.02,
             "command_name": "transport_target",
         },
-        weight=40.0,
+        weight=150.0,
     )
+
+    # in_box_grasp_penalty = RewTerm(
+    #     func=mdp.gripper_hold_in_box_penalty,
+    #     params={
+    #         "target_xy_threshold": 0.003,
+    #         "target_height_threshold": 0.003,
+    #         "command_name": "box_pose",
+    #         "staged_command_name": "transport_target",
+    #     },
+    #     weight=-80.0,
+    # )
+    
+    # # Stage 7: True placed success
+    # placed_success_reward = RewTerm(
+    #     func=mdp.placed_success_reward_new,
+    #     params={
+    #         "placed_height_offset": TARGET_BOX_PLACE_Z - TARGET_BOX_FLOOR_CENTER_Z,
+    #         "z_threshold": 0.02,
+    #         "linear_vel_threshold": 0.05,
+    #         "angular_vel_threshold": 0.10,
+    #         "min_open_fraction": 0.75,
+    #         "ee_object_distance_threshold": 0.06,
+    #         "box_inner_size": TARGET_BOX_INNER_SIZE,
+    #         "command_name": "transport_target",
+    #     },
+    #     weight=40.0,
+    # )
 
     # dropped_reward = RewTerm(
     #     func=mdp.drop_object_reward,
@@ -455,12 +477,15 @@ class RewardsCfg:
     # )
 
     # --- PENALTIES --- #
-    action_rate = RewTerm(func=mdp.action_rate_l2, weight=-1e-4)
+    action_rate = RewTerm(func=mdp.action_rate_l2, weight=-1e-3)
     joint_vel = RewTerm(
         func=mdp.joint_vel_l2,
-        weight=-1e-4,
+        weight=-1e-3,
         params={"asset_cfg": SceneEntityCfg("robot")},
     )
+
+
+
 
 
 @configclass
@@ -500,12 +525,12 @@ class CurriculumCfg:
     # Gradually increase action penalties to encourage smooth motion
     action_rate = CurrTerm(
         func=mdp.modify_reward_weight,
-        params={"term_name": "action_rate", "weight": -1e-2, "num_steps": 20000},
+        params={"term_name": "action_rate", "weight": -5e-2, "num_steps": 20000},
     )
 
     joint_vel = CurrTerm(
         func=mdp.modify_reward_weight,
-        params={"term_name": "joint_vel", "weight": -1e-2, "num_steps": 20000},
+        params={"term_name": "joint_vel", "weight": -5e-2, "num_steps": 20000},
     )
 
 

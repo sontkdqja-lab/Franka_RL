@@ -155,6 +155,21 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
         log_dir += f"_{agent_cfg.run_name}"
     log_dir = os.path.join(log_root_path, log_dir)
 
+    # validate external logger configuration early for clearer failure modes
+    if getattr(agent_cfg, "logger", "tensorboard") == "wandb":
+        try:
+            metadata.version("wandb")
+        except metadata.PackageNotFoundError as exc:
+            raise ModuleNotFoundError(
+                "wandb logging requested, but the 'wandb' package is not installed in the current environment."
+            ) from exc
+        os.environ.setdefault("WANDB_DIR", log_dir)
+        os.environ.setdefault("WANDB_INIT_TIMEOUT", "300")
+        print(
+            f"[INFO] W&B logging enabled. project={agent_cfg.wandb_project}, "
+            f"run_name={agent_cfg.run_name or log_dir.split(os.sep)[-1]}"
+        )
+
     # set the IO descriptors export flag if requested
     if isinstance(env_cfg, ManagerBasedRLEnvCfg):
         env_cfg.export_io_descriptors = args_cli.export_io_descriptors

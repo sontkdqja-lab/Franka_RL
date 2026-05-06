@@ -19,6 +19,7 @@ class FrankaReachPPORunnerCfg(RslRlOnPolicyRunnerCfg):
     # clip_actions = 10.0
     policy = RslRlPpoActorCriticCfg(
         init_noise_std=1.0,
+        noise_std_type="log",
         actor_obs_normalization=False,
         critic_obs_normalization=False,
         actor_hidden_dims=[256, 128, 64],

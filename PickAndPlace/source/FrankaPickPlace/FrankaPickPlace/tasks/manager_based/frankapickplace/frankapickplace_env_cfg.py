@@ -366,28 +366,28 @@ class EventCfg:
 
     reset_all = EventTerm(func=mdp.reset_scene_to_default, mode="reset")
 
-    # reset_object_position = EventTerm(
-    #     func=mdp.reset_root_state_uniform,
-    #     mode="reset",
-    #     params={
-    #         "pose_range": {"x": (-0.05, 0.05), "y": (-0.05, 0.05), "z": (0.0, 0.0)},
-    #         "velocity_range": {},
-    #         "asset_cfg": SceneEntityCfg("object"),
-    #     },
-    # )
-    # "pose_range": {"x": (-0.1, 0.1), "y": (-0.25, 0.25), "z": (0.0, 0.0)}
-
     reset_object_position = EventTerm(
-        func=mdp.reset_root_state_on_grid,
+        func=mdp.reset_root_state_uniform,
         mode="reset",
         params={
-            "grid_x": [0.40, 0.45, 0.50],
-            "grid_y": [-0.10, 0.00, 0.10],
-            "pose_range": {"z": (0.0, 0.0)},
+            "pose_range": {"x": (-0.1, 0.1), "y": (-0.25, 0.25), "z": (0.0, 0.0)},
             "velocity_range": {},
             "asset_cfg": SceneEntityCfg("object"),
         },
     )
+    # "pose_range": {"x": (-0.1, 0.1), "y": (-0.25, 0.25), "z": (0.0, 0.0)}
+
+    # reset_object_position = EventTerm(
+    #     func=mdp.reset_root_state_on_grid,
+    #     mode="reset",
+    #     params={
+    #         "grid_x": [0.40, 0.45, 0.50],
+    #         "grid_y": [-0.10, 0.00, 0.10],
+    #         "pose_range": {"z": (0.0, 0.0)},
+    #         "velocity_range": {},
+    #         "asset_cfg": SceneEntityCfg("object"),
+    #     },
+    # )
 
 
 
@@ -459,11 +459,11 @@ class RewardsCfg:
     )
 
     # Stage 5: Placement (height-aware)
-    placement_reward = RewTerm(
-        func=mdp.placement_height_reward,
-        params={"xy_threshold": 0.02, "target_height_offset": 0.02, "command_name": "transport_target"},
-        weight=15.0,
-    )
+    # placement_reward = RewTerm(
+    #     func=mdp.placement_height_reward,
+    #     params={"xy_threshold": 0.02, "target_height_offset": 0.02, "command_name": "transport_target"},
+    #     weight=15.0,
+    # )
 
     # Stage 6: Release
     release_reward = RewTerm(
@@ -473,7 +473,7 @@ class RewardsCfg:
             "height_threshold": 0.02,
             "command_name": "transport_target",
         },
-        weight=150.0,
+        weight=40.0,
     )
 
     in_box_grasp_penalty = RewTerm(
@@ -574,10 +574,10 @@ class CurriculumCfg:
     """Curriculum terms for the MDP."""
 
     # Gradually increase placement and release rewards as training progresses
-    placement_weight = CurrTerm(
-        func=mdp.modify_reward_weight,
-        params={"term_name": "placement_reward", "weight": 30.0, "num_steps": 15000},
-    )
+    # placement_weight = CurrTerm(
+    #     func=mdp.modify_reward_weight,
+    #     params={"term_name": "placement_reward", "weight": 30.0, "num_steps": 15000},
+    # )
 
     release_weight = CurrTerm(
         func=mdp.modify_reward_weight,

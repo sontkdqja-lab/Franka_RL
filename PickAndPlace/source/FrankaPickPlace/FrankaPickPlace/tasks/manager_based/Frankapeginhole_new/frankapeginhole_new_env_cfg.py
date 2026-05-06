@@ -33,8 +33,9 @@ from isaaclab.sensors.frame_transformer.frame_transformer_cfg import OffsetCfg
 from . import mdp
 
 
-NUT_OUTER_RADIUS = 0.04
-NUT_INNER_RADIUS = 0.022
+# Half-scale nut dimensions.
+NUT_OUTER_RADIUS = 0.02
+NUT_INNER_RADIUS = 0.011
 NUT_THICKNESS = 0.03
 NUT_START_Z = NUT_THICKNESS * 0.5
 LIFT_MINIMAL_HEIGHT = 0.04
@@ -43,8 +44,9 @@ TARGET_PLATE_CENTER_Y = -0.36
 TARGET_PLATE_SIZE = 0.14
 TARGET_PLATE_THICKNESS = 0.01
 TARGET_PLATE_CENTER_Z = TARGET_PLATE_THICKNESS * 0.5
-TARGET_PEG_RADIUS = 0.019
-TARGET_PEG_HEIGHT = 0.08
+# Keep a similar clearance ratio between the peg and the circular nut hole.
+TARGET_PEG_RADIUS = 0.008
+TARGET_PEG_HEIGHT = 0.04
 TARGET_PEG_CENTER_Z = TARGET_PLATE_THICKNESS + TARGET_PEG_HEIGHT * 0.5
 TARGET_NUT_REST_Z = TARGET_PLATE_THICKNESS + NUT_THICKNESS * 0.5
 
@@ -64,9 +66,9 @@ def _write_octagonal_nut_mesh(
     inner_radius: float,
     thickness: float,
     outer_sides: int = 8,
-    inner_sides: int = 48,
+    inner_sides: int = 128,
 ) -> None:
-    """Create an octagonal ring mesh with a circular inner hole as a Wavefront OBJ."""
+    """Create an octagonal ring mesh with a high-resolution circular inner hole as a Wavefront OBJ."""
     if inner_sides % outer_sides != 0:
         raise ValueError("inner_sides must be divisible by outer_sides for sector triangulation.")
 
@@ -150,13 +152,12 @@ def _get_nut_usd_path() -> str:
     obj_path = asset_root / "octagonal_nut.obj"
     usd_dir = asset_root / "usd"
 
-    if not obj_path.exists():
-        _write_octagonal_nut_mesh(
-            obj_path,
-            outer_radius=NUT_OUTER_RADIUS,
-            inner_radius=NUT_INNER_RADIUS,
-            thickness=NUT_THICKNESS,
-        )
+    _write_octagonal_nut_mesh(
+        obj_path,
+        outer_radius=NUT_OUTER_RADIUS,
+        inner_radius=NUT_INNER_RADIUS,
+        thickness=NUT_THICKNESS,
+    )
 
     converter = MeshConverter(
         MeshConverterCfg(

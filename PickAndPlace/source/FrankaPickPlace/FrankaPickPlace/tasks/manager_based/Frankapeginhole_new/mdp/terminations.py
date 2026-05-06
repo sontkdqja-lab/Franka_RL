@@ -16,7 +16,7 @@ from typing import TYPE_CHECKING
 
 from isaaclab.assets import RigidObject
 from isaaclab.managers import SceneEntityCfg
-from isaaclab.utils.math import combine_frame_transforms
+from isaaclab.utils.math import combine_frame_transforms, quat_apply
 
 if TYPE_CHECKING:
     from isaaclab.envs import ManagerBasedRLEnv
@@ -28,6 +28,17 @@ def _stage_complete_mask(env: ManagerBasedRLEnv, command_name: str) -> torch.Ten
     if hasattr(term, "stage_complete"):
         return term.stage_complete
     return torch.ones(env.num_envs, device=env.device, dtype=torch.bool)
+
+
+def _object_flat_alignment(
+    env: ManagerBasedRLEnv,
+    object_cfg: SceneEntityCfg = SceneEntityCfg("object"),
+) -> torch.Tensor:
+    """Return how parallel the object's local +Z axis is to the world +Z axis."""
+    obj: RigidObject = env.scene[object_cfg.name]
+    local_normal = torch.tensor([0.0, 0.0, 1.0], device=env.device).repeat(env.num_envs, 1)
+    object_normal_w = quat_apply(obj.data.root_quat_w, local_normal)
+    return torch.abs(object_normal_w[:, 2]).clamp(0.0, 1.0)
 
 
 def object_reached_goal(
@@ -68,7 +79,8 @@ def object_placed_success(
     z_threshold: float = 0.02,
     linear_vel_threshold: float = 0.05,
     angular_vel_threshold: float = 0.10,
-    gripper_open_threshold: float = 0.03,
+    orientation_threshold: float = 0.90,
+    # gripper_open_threshold: float = 0.03,
     robot_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
     object_cfg: SceneEntityCfg = SceneEntityCfg("object"),
 ) -> torch.Tensor:
@@ -92,8 +104,10 @@ def object_placed_success(
     angular_speed = torch.norm(obj.data.root_ang_vel_w, dim=1)
     stable = (linear_speed < linear_vel_threshold) & (angular_speed < angular_vel_threshold)
 
-    gripper_joints = robot.data.joint_pos[:, -1]
-    released = torch.mean(gripper_joints) > gripper_open_threshold
+    flat_enough = _object_flat_alignment(env, object_cfg=object_cfg) > orientation_threshold
 
-    # return _stage_complete_mask(env, command_name) & near_target 
-    return _stage_complete_mask(env, command_name) & near_target & stable & released
+    # gripper_joints = robot.data.joint_pos[:, -1]
+    # released = torch.mean(gripper_joints) > gripper_open_threshold
+
+    return _stage_complete_mask(env, command_name) & near_target & stable & flat_enough
+    # return _stage_complete_mask(env, command_name) & near_target & stable & released

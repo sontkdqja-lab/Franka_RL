@@ -2,7 +2,8 @@
 # All rights reserved.
 #
 # SPDX-License-Identifier: BSD-3-Clause
-
+import math
+from pathlib import Path
 
 import isaaclab.sim as sim_utils
 from isaaclab.assets import ArticulationCfg, AssetBaseCfg
@@ -16,6 +17,8 @@ from isaaclab.managers import RewardTermCfg as RewTerm
 from isaaclab.managers import SceneEntityCfg
 from isaaclab.managers import TerminationTermCfg as DoneTerm
 from isaaclab.scene import InteractiveSceneCfg
+from isaaclab.sim.converters import MeshConverter, MeshConverterCfg
+from isaaclab.sim.schemas.schemas_cfg import ConvexDecompositionPropertiesCfg, MassPropertiesCfg
 from isaaclab.sim.spawners.from_files.from_files_cfg import GroundPlaneCfg, UsdFileCfg
 from isaaclab.utils import configclass
 from isaaclab.utils.assets import ISAAC_NUCLEUS_DIR
@@ -30,19 +33,155 @@ from isaaclab.sensors.frame_transformer.frame_transformer_cfg import OffsetCfg
 from . import mdp
 
 
-CUBE_SIZE = 0.05
-CUBE_START_Z = CUBE_SIZE * 0.5
+NUT_OUTER_RADIUS = 0.04
+NUT_INNER_RADIUS = 0.022
+NUT_THICKNESS = 0.03
+NUT_START_Z = NUT_THICKNESS * 0.5
 LIFT_MINIMAL_HEIGHT = 0.04
-TARGET_BOX_CENTER_X = 0.58
-TARGET_BOX_CENTER_Y = -0.36
-TARGET_BOX_INNER_SIZE = 0.12
-TARGET_BOX_WALL_THICKNESS = 0.01
-TARGET_BOX_WALL_HEIGHT = 0.06
-TARGET_BOX_FLOOR_THICKNESS = 0.01
-TARGET_BOX_FLOOR_CENTER_Z = TARGET_BOX_FLOOR_THICKNESS * 0.5
-TARGET_BOX_WALL_CENTER_Z = TARGET_BOX_FLOOR_THICKNESS + TARGET_BOX_WALL_HEIGHT * 0.5
-TARGET_BOX_OUTER_SPAN = TARGET_BOX_INNER_SIZE + 2.0 * TARGET_BOX_WALL_THICKNESS
-TARGET_BOX_PLACE_Z = TARGET_BOX_FLOOR_THICKNESS + CUBE_START_Z
+TARGET_PLATE_CENTER_X = 0.58
+TARGET_PLATE_CENTER_Y = -0.36
+TARGET_PLATE_SIZE = 0.14
+TARGET_PLATE_THICKNESS = 0.01
+TARGET_PLATE_CENTER_Z = TARGET_PLATE_THICKNESS * 0.5
+TARGET_PEG_RADIUS = 0.019
+TARGET_PEG_HEIGHT = 0.08
+TARGET_PEG_CENTER_Z = TARGET_PLATE_THICKNESS + TARGET_PEG_HEIGHT * 0.5
+TARGET_NUT_REST_Z = TARGET_PLATE_THICKNESS + NUT_THICKNESS * 0.5
+
+# Keep the copied pick-and-place term names wired to the new peg-in-hole geometry.
+TARGET_BOX_CENTER_X = TARGET_PLATE_CENTER_X
+TARGET_BOX_CENTER_Y = TARGET_PLATE_CENTER_Y
+TARGET_BOX_INNER_SIZE = TARGET_PLATE_SIZE
+TARGET_BOX_FLOOR_THICKNESS = TARGET_PLATE_THICKNESS
+TARGET_BOX_FLOOR_CENTER_Z = TARGET_PLATE_CENTER_Z
+TARGET_BOX_OUTER_SPAN = TARGET_PLATE_SIZE
+TARGET_BOX_PLACE_Z = TARGET_NUT_REST_Z
+
+
+def _write_octagonal_nut_mesh(
+    file_path: Path,
+    outer_radius: float,
+    inner_radius: float,
+    thickness: float,
+    outer_sides: int = 8,
+    inner_sides: int = 48,
+) -> None:
+    """Create an octagonal ring mesh with a circular inner hole as a Wavefront OBJ."""
+    if inner_sides % outer_sides != 0:
+        raise ValueError("inner_sides must be divisible by outer_sides for sector triangulation.")
+
+    file_path.parent.mkdir(parents=True, exist_ok=True)
+
+    top_z = thickness * 0.5
+    bottom_z = -top_z
+    outer_angle_offset = math.pi / outer_sides
+    sector_ratio = inner_sides // outer_sides
+
+    vertices: list[tuple[float, float, float]] = []
+    outer_top: list[int] = []
+    outer_bottom: list[int] = []
+    inner_top: list[int] = []
+    inner_bottom: list[int] = []
+
+    def add_vertex(x: float, y: float, z: float) -> int:
+        vertices.append((x, y, z))
+        return len(vertices) - 1
+
+    for i in range(outer_sides):
+        angle = outer_angle_offset + 2.0 * math.pi * i / outer_sides
+        x = outer_radius * math.cos(angle)
+        y = outer_radius * math.sin(angle)
+        outer_top.append(add_vertex(x, y, top_z))
+        outer_bottom.append(add_vertex(x, y, bottom_z))
+
+    for i in range(inner_sides):
+        angle = 2.0 * math.pi * i / inner_sides
+        x = inner_radius * math.cos(angle)
+        y = inner_radius * math.sin(angle)
+        inner_top.append(add_vertex(x, y, top_z))
+        inner_bottom.append(add_vertex(x, y, bottom_z))
+
+    faces: list[tuple[int, int, int]] = []
+
+    def add_triangle(a: int, b: int, c: int) -> None:
+        faces.append((a, b, c))
+
+    def add_quad(a: int, b: int, c: int, d: int) -> None:
+        add_triangle(a, b, c)
+        add_triangle(a, c, d)
+
+    # Outer and inner cylindrical walls.
+    for i in range(outer_sides):
+        i_next = (i + 1) % outer_sides
+        add_quad(outer_bottom[i], outer_bottom[i_next], outer_top[i_next], outer_top[i])
+
+    for i in range(inner_sides):
+        i_next = (i + 1) % inner_sides
+        add_quad(inner_bottom[i], inner_top[i], inner_top[i_next], inner_bottom[i_next])
+
+    # Top and bottom annular faces, sector by sector.
+    for i in range(outer_sides):
+        i_next = (i + 1) % outer_sides
+        inner_start = i * sector_ratio
+        inner_end = inner_start + sector_ratio
+
+        top_sector = [outer_top[i], outer_top[i_next]]
+        top_sector.extend(inner_top[j % inner_sides] for j in range(inner_end, inner_start - 1, -1))
+        for j in range(1, len(top_sector) - 1):
+            add_triangle(top_sector[0], top_sector[j], top_sector[j + 1])
+
+        bottom_sector = [outer_bottom[i]]
+        bottom_sector.extend(inner_bottom[j % inner_sides] for j in range(inner_start, inner_end + 1))
+        bottom_sector.append(outer_bottom[i_next])
+        for j in range(1, len(bottom_sector) - 1):
+            add_triangle(bottom_sector[0], bottom_sector[j], bottom_sector[j + 1])
+
+    with file_path.open("w", encoding="ascii") as f:
+        f.write("# Auto-generated octagonal nut mesh for Frankapeginhole_new\n")
+        for x, y, z in vertices:
+            f.write(f"v {x:.8f} {y:.8f} {z:.8f}\n")
+        for a, b, c in faces:
+            f.write(f"f {a + 1} {b + 1} {c + 1}\n")
+
+
+def _get_nut_usd_path() -> str:
+    """Generate and convert the nut mesh into a USD asset for the new task."""
+    asset_root = Path(__file__).resolve().parent / "assets" / "generated"
+    obj_path = asset_root / "octagonal_nut.obj"
+    usd_dir = asset_root / "usd"
+
+    if not obj_path.exists():
+        _write_octagonal_nut_mesh(
+            obj_path,
+            outer_radius=NUT_OUTER_RADIUS,
+            inner_radius=NUT_INNER_RADIUS,
+            thickness=NUT_THICKNESS,
+        )
+
+    converter = MeshConverter(
+        MeshConverterCfg(
+            asset_path=str(obj_path),
+            usd_dir=str(usd_dir),
+            usd_file_name="octagonal_nut.usd",
+            make_instanceable=True,
+            force_usd_conversion=True,
+            rigid_props=RigidBodyPropertiesCfg(
+                solver_position_iteration_count=16,
+                solver_velocity_iteration_count=1,
+                max_angular_velocity=1000.0,
+                max_linear_velocity=1000.0,
+                max_depenetration_velocity=5.0,
+                disable_gravity=False,
+            ),
+            mass_props=MassPropertiesCfg(mass=0.05),
+            collision_props=sim_utils.CollisionPropertiesCfg(),
+            mesh_collision_props=ConvexDecompositionPropertiesCfg(),
+        )
+    )
+    return converter.usd_path
+
+
+NUT_USD_PATH = _get_nut_usd_path()
 
 
 def make_main_camera_cfg() -> CameraCfg:
@@ -116,29 +255,16 @@ class FrankaSceneCfg(InteractiveSceneCfg):
 
     # objects
     object = RigidObjectCfg(
-        prim_path="{ENV_REGEX_NS}/Cube",
-        init_state=RigidObjectCfg.InitialStateCfg(pos=[0.45, 0, CUBE_START_Z], rot=[1, 0, 0, 0]),
-        spawn=sim_utils.CuboidCfg(
-            size=[CUBE_SIZE, CUBE_SIZE, CUBE_SIZE],
-            semantic_tags=[("color", "red")],
-            rigid_props=RigidBodyPropertiesCfg(
-                solver_position_iteration_count=16,
-                solver_velocity_iteration_count=1,
-                max_angular_velocity=1000.0,
-                max_linear_velocity=1000.0,
-                max_depenetration_velocity=5.0,
-                disable_gravity=False,
-            ),
-            visual_material=sim_utils.PreviewSurfaceCfg(
-                diffuse_color=(0.0, 1.0, 0.0), metallic=0.2
-            ),
-            collision_props=sim_utils.CollisionPropertiesCfg(),
-            physics_material=sim_utils.RigidBodyMaterialCfg(static_friction=1.0),
+        prim_path="{ENV_REGEX_NS}/Nut",
+        init_state=RigidObjectCfg.InitialStateCfg(pos=[0.45, 0, NUT_START_Z], rot=[1, 0, 0, 0]),
+        spawn=UsdFileCfg(
+            usd_path=NUT_USD_PATH,
+            visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.76, 0.65, 0.22), metallic=0.35),
         ),
     )
 
     target_box_floor = RigidObjectCfg(
-        prim_path="{ENV_REGEX_NS}/TargetBoxFloor",
+        prim_path="{ENV_REGEX_NS}/TargetPlate",
         init_state=RigidObjectCfg.InitialStateCfg(
             pos=[TARGET_BOX_CENTER_X, TARGET_BOX_CENTER_Y, TARGET_BOX_FLOOR_CENTER_Z],
             rot=[1.0, 0.0, 0.0, 0.0],
@@ -152,79 +278,19 @@ class FrankaSceneCfg(InteractiveSceneCfg):
         ),
     )
 
-    target_box_left_wall = RigidObjectCfg(
-        prim_path="{ENV_REGEX_NS}/TargetBoxLeftWall",
+    target_peg = RigidObjectCfg(
+        prim_path="{ENV_REGEX_NS}/TargetPeg",
         init_state=RigidObjectCfg.InitialStateCfg(
-            pos=[
-                TARGET_BOX_CENTER_X - (TARGET_BOX_INNER_SIZE * 0.5 + TARGET_BOX_WALL_THICKNESS * 0.5),
-                TARGET_BOX_CENTER_Y,
-                TARGET_BOX_WALL_CENTER_Z,
-            ],
+            pos=[TARGET_PLATE_CENTER_X, TARGET_PLATE_CENTER_Y, TARGET_PEG_CENTER_Z],
             rot=[1.0, 0.0, 0.0, 0.0],
         ),
-        spawn=sim_utils.CuboidCfg(
-            size=[TARGET_BOX_WALL_THICKNESS, TARGET_BOX_OUTER_SPAN, TARGET_BOX_WALL_HEIGHT],
+        spawn=sim_utils.CylinderCfg(
+            radius=TARGET_PEG_RADIUS,
+            height=TARGET_PEG_HEIGHT,
             rigid_props=RigidBodyPropertiesCfg(kinematic_enabled=True, disable_gravity=True),
             collision_props=sim_utils.CollisionPropertiesCfg(),
             physics_material=sim_utils.RigidBodyMaterialCfg(static_friction=1.0, dynamic_friction=1.0),
-            visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.55, 0.43, 0.28), metallic=0.1),
-        ),
-    )
-
-    target_box_right_wall = RigidObjectCfg(
-        prim_path="{ENV_REGEX_NS}/TargetBoxRightWall",
-        init_state=RigidObjectCfg.InitialStateCfg(
-            pos=[
-                TARGET_BOX_CENTER_X + (TARGET_BOX_INNER_SIZE * 0.5 + TARGET_BOX_WALL_THICKNESS * 0.5),
-                TARGET_BOX_CENTER_Y,
-                TARGET_BOX_WALL_CENTER_Z,
-            ],
-            rot=[1.0, 0.0, 0.0, 0.0],
-        ),
-        spawn=sim_utils.CuboidCfg(
-            size=[TARGET_BOX_WALL_THICKNESS, TARGET_BOX_OUTER_SPAN, TARGET_BOX_WALL_HEIGHT],
-            rigid_props=RigidBodyPropertiesCfg(kinematic_enabled=True, disable_gravity=True),
-            collision_props=sim_utils.CollisionPropertiesCfg(),
-            physics_material=sim_utils.RigidBodyMaterialCfg(static_friction=1.0, dynamic_friction=1.0),
-            visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.55, 0.43, 0.28), metallic=0.1),
-        ),
-    )
-
-    target_box_front_wall = RigidObjectCfg(
-        prim_path="{ENV_REGEX_NS}/TargetBoxFrontWall",
-        init_state=RigidObjectCfg.InitialStateCfg(
-            pos=[
-                TARGET_BOX_CENTER_X,
-                TARGET_BOX_CENTER_Y + (TARGET_BOX_INNER_SIZE * 0.5 + TARGET_BOX_WALL_THICKNESS * 0.5),
-                TARGET_BOX_WALL_CENTER_Z,
-            ],
-            rot=[1.0, 0.0, 0.0, 0.0],
-        ),
-        spawn=sim_utils.CuboidCfg(
-            size=[TARGET_BOX_OUTER_SPAN, TARGET_BOX_WALL_THICKNESS, TARGET_BOX_WALL_HEIGHT],
-            rigid_props=RigidBodyPropertiesCfg(kinematic_enabled=True, disable_gravity=True),
-            collision_props=sim_utils.CollisionPropertiesCfg(),
-            physics_material=sim_utils.RigidBodyMaterialCfg(static_friction=1.0, dynamic_friction=1.0),
-            visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.55, 0.43, 0.28), metallic=0.1),
-        ),
-    )
-
-    target_box_back_wall = RigidObjectCfg(
-        prim_path="{ENV_REGEX_NS}/TargetBoxBackWall",
-        init_state=RigidObjectCfg.InitialStateCfg(
-            pos=[
-                TARGET_BOX_CENTER_X,
-                TARGET_BOX_CENTER_Y - (TARGET_BOX_INNER_SIZE * 0.5 + TARGET_BOX_WALL_THICKNESS * 0.5),
-                TARGET_BOX_WALL_CENTER_Z,
-            ],
-            rot=[1.0, 0.0, 0.0, 0.0],
-        ),
-        spawn=sim_utils.CuboidCfg(
-            size=[TARGET_BOX_OUTER_SPAN, TARGET_BOX_WALL_THICKNESS, TARGET_BOX_WALL_HEIGHT],
-            rigid_props=RigidBodyPropertiesCfg(kinematic_enabled=True, disable_gravity=True),
-            collision_props=sim_utils.CollisionPropertiesCfg(),
-            physics_material=sim_utils.RigidBodyMaterialCfg(static_friction=1.0, dynamic_friction=1.0),
-            visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.55, 0.43, 0.28), metallic=0.1),
+            visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.42, 0.46, 0.55), metallic=0.45),
         ),
     )
 
@@ -294,7 +360,7 @@ class CommandsCfg:
         ranges=mdp.UniformPoseCommandCfg.Ranges(
             pos_x=(TARGET_BOX_CENTER_X, TARGET_BOX_CENTER_X),
             pos_y=(TARGET_BOX_CENTER_Y, TARGET_BOX_CENTER_Y),
-            pos_z=(TARGET_BOX_PLACE_Z + 0.08 , TARGET_BOX_PLACE_Z + 0.08 ),
+            pos_z=(TARGET_BOX_PLACE_Z, TARGET_BOX_PLACE_Z),
             roll=(0.0, 0.0),
             pitch=(0.0, 0.0),
             yaw=(0.0, 0.0),
@@ -345,6 +411,7 @@ class ObservationsCfg:
         joint_pos = ObsTerm(func=mdp.joint_pos_rel)
         joint_vel = ObsTerm(func=mdp.joint_vel_rel)
         object_position = ObsTerm(func=mdp.object_position_in_robot_root_frame)
+        object_normal = ObsTerm(func=mdp.object_normal_in_robot_root_frame)
 
         place_target = ObsTerm(func=mdp.generated_commands, params={"command_name": "transport_target"})
         transport_phase = ObsTerm(
@@ -366,28 +433,16 @@ class EventCfg:
 
     reset_all = EventTerm(func=mdp.reset_scene_to_default, mode="reset")
 
-    # reset_object_position = EventTerm(
-    #     func=mdp.reset_root_state_uniform,
-    #     mode="reset",
-    #     params={
-    #         "pose_range": {"x": (-0.05, 0.05), "y": (-0.05, 0.05), "z": (0.0, 0.0)},
-    #         "velocity_range": {},
-    #         "asset_cfg": SceneEntityCfg("object"),
-    #     },
-    # )
-    # "pose_range": {"x": (-0.1, 0.1), "y": (-0.25, 0.25), "z": (0.0, 0.0)}
-
     reset_object_position = EventTerm(
-        func=mdp.reset_root_state_on_grid,
+        func=mdp.reset_root_state_uniform,
         mode="reset",
         params={
-            "grid_x": [0.40, 0.45, 0.50],
-            "grid_y": [-0.10, 0.00, 0.10],
-            "pose_range": {"z": (0.0, 0.0)},
+            "pose_range": {"x": (-0.05, 0.05), "y": (-0.05, 0.05), "z": (0.0, 0.0)},
             "velocity_range": {},
             "asset_cfg": SceneEntityCfg("object"),
         },
     )
+    # "pose_range": {"x": (-0.1, 0.1), "y": (-0.25, 0.25), "z": (0.0, 0.0)}
 
 
 
@@ -411,10 +466,27 @@ class RewardsCfg:
         weight=5.0
     )
 
+    flat_orientation = RewTerm(
+        func=mdp.object_flat_orientation_reward,
+        weight=2.0,
+    )
+
+    grasp_flat_orientation = RewTerm(
+        func=mdp.grasp_flat_orientation_reward,
+        params={"distance_threshold": 0.05},
+        weight=3.0,
+    )
+
 
     # Stage 3: Lifting
     lifting_object = RewTerm(
         func=mdp.object_is_lifted, params={"minimal_height": LIFT_MINIMAL_HEIGHT}, weight=10.0
+    )
+
+    lifted_flat_orientation = RewTerm(
+        func=mdp.lifted_flat_orientation_reward,
+        params={"minimal_height": LIFT_MINIMAL_HEIGHT},
+        weight=6.0,
     )
 
     # Stage 4: Transport (multi-scale for better gradients)
@@ -564,7 +636,8 @@ class TerminationsCfg:
             "z_threshold": 0.02,
             "linear_vel_threshold": 0.05,
             "angular_vel_threshold": 0.10,
-            "gripper_open_threshold": 0.03,
+            "orientation_threshold": 0.90,
+            # "gripper_open_threshold": 0.03,
         },
     )
 
@@ -600,7 +673,7 @@ class CurriculumCfg:
 # Environment configuration
 ##
 @configclass
-class FrankPickPlaceEnvCfg(ManagerBasedRLEnvCfg):
+class FrankaPegInHoleNewEnvCfg(ManagerBasedRLEnvCfg):
     """Configuration for the Franka pick-and-place environment."""
 
     # Scene settings
@@ -636,7 +709,7 @@ class FrankPickPlaceEnvCfg(ManagerBasedRLEnvCfg):
 
 
 @configclass
-class FrankPickPlaceCfgEnvCfg_PLAY(FrankPickPlaceEnvCfg):
+class FrankaPegInHoleNewEnvCfg_PLAY(FrankaPegInHoleNewEnvCfg):
     def __post_init__(self):
         # post init of parent
         super().__post_init__()

@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING
 from isaaclab.assets import RigidObject
 from isaaclab.managers import SceneEntityCfg
 from isaaclab.sensors import FrameTransformer
-from isaaclab.utils.math import combine_frame_transforms
+from isaaclab.utils.math import combine_frame_transforms, quat_apply
 
 if TYPE_CHECKING:
     from isaaclab.envs import ManagerBasedRLEnv
@@ -26,6 +26,20 @@ def _stage_complete_mask(env: ManagerBasedRLEnv, command_name: str) -> torch.Ten
     if hasattr(term, "stage_complete"):
         return term.stage_complete
     return torch.ones(env.num_envs, device=env.device, dtype=torch.bool)
+
+
+def _object_flat_alignment(
+    env: ManagerBasedRLEnv,
+    object_cfg: SceneEntityCfg = SceneEntityCfg("object"),
+) -> torch.Tensor:
+    """Return how parallel the object's local +Z axis is to the world +Z axis.
+
+    A value near 1 means the nut lies flat; a value near 0 means it is standing on its side.
+    """
+    obj: RigidObject = env.scene[object_cfg.name]
+    local_normal = torch.tensor([0.0, 0.0, 1.0], device=env.device).repeat(env.num_envs, 1)
+    object_normal_w = quat_apply(obj.data.root_quat_w, local_normal)
+    return torch.abs(object_normal_w[:, 2]).clamp(0.0, 1.0)
 
 
 def _object_within_box_xy(
@@ -169,29 +183,71 @@ def target_stability_reward(
     return near_target * quiet_joints * quiet_actions
 
 
-def drop_object_reward(
+def object_flat_orientation_reward(
     env: ManagerBasedRLEnv,
-    distance_threshold: float,
-    command_name: str,
-    robot_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
     object_cfg: SceneEntityCfg = SceneEntityCfg("object"),
-) -> torch.Tensor:  
-    """Reward the agent for dropping the object at the target location."""
-    # extract the used quantities (to enable type-hinting)
-    robot: RigidObject = env.scene[robot_cfg.name]
+) -> torch.Tensor:
+    """Reward keeping the nut flat instead of tipping it upright."""
+    return _object_flat_alignment(env, object_cfg=object_cfg)
+
+
+def grasp_flat_orientation_reward(
+    env: ManagerBasedRLEnv,
+    distance_threshold: float = 0.05,
+    object_cfg: SceneEntityCfg = SceneEntityCfg("object"),
+    ee_frame_cfg: SceneEntityCfg = SceneEntityCfg("ee_frame"),
+    robot_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+) -> torch.Tensor:
+    """Bias grasping toward flat nut orientations near the gripper."""
     object: RigidObject = env.scene[object_cfg.name]
-    command = env.command_manager.get_command(command_name)
-    # compute the desired position in the world frame
-    des_pos_b = command[:, :3]
-    des_pos_w, _ = combine_frame_transforms(robot.data.root_pos_w, robot.data.root_quat_w, des_pos_b)
-    # distance of the end-effector to the object: (num_envs,)
-    distance = torch.norm(des_pos_w - object.data.root_pos_w, dim=1)
-    # check if within threshold
-    within_threshold = (distance < distance_threshold).float()
-    # gripper opening reward
-    gripper_joints = robot.data.joint_pos[:, -2:]
-    gripper_opened = torch.where(torch.mean(gripper_joints, dim=1) >= 0.04, 1.0, 0.0)
-    return gripper_opened * within_threshold
+    ee_frame: FrameTransformer = env.scene[ee_frame_cfg.name]
+    robot: RigidObject = env.scene[robot_cfg.name]
+
+    object_pos_w = object.data.root_pos_w[:, :3]
+    ee_pos_w = ee_frame.data.target_pos_w[..., 0, :]
+    distance = torch.norm(object_pos_w - ee_pos_w, dim=1)
+    near_object = (distance < distance_threshold).float()
+
+    gripper_joint = robot.data.joint_pos[:, -1]
+    gripper_closure = 1.0 - torch.clamp(gripper_joint / 0.04, 0.0, 1.0)
+
+    return near_object * gripper_closure * _object_flat_alignment(env, object_cfg=object_cfg)
+
+
+def lifted_flat_orientation_reward(
+    env: ManagerBasedRLEnv,
+    minimal_height: float = 0.04,
+    object_cfg: SceneEntityCfg = SceneEntityCfg("object"),
+) -> torch.Tensor:
+    """Reward maintaining a flat nut orientation once it has been picked up."""
+    object: RigidObject = env.scene[object_cfg.name]
+    lifted = (object.data.root_pos_w[:, 2] > minimal_height).float()
+    return lifted * _object_flat_alignment(env, object_cfg=object_cfg)
+
+
+# def drop_object_reward(
+#     env: ManagerBasedRLEnv,
+#     distance_threshold: float,
+#     command_name: str,
+#     robot_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+#     object_cfg: SceneEntityCfg = SceneEntityCfg("object"),
+# ) -> torch.Tensor:  
+#     """Reward the agent for dropping the object at the target location."""
+#     # extract the used quantities (to enable type-hinting)
+#     robot: RigidObject = env.scene[robot_cfg.name]
+#     object: RigidObject = env.scene[object_cfg.name]
+#     command = env.command_manager.get_command(command_name)
+#     # compute the desired position in the world frame
+#     des_pos_b = command[:, :3]
+#     des_pos_w, _ = combine_frame_transforms(robot.data.root_pos_w, robot.data.root_quat_w, des_pos_b)
+#     # distance of the end-effector to the object: (num_envs,)
+#     distance = torch.norm(des_pos_w - object.data.root_pos_w, dim=1)
+#     # check if within threshold
+#     within_threshold = (distance < distance_threshold).float()
+#     # gripper opening reward
+#     gripper_joints = robot.data.joint_pos[:, -2:]
+#     gripper_opened = torch.where(torch.mean(gripper_joints, dim=1) >= 0.04, 1.0, 0.0)
+#     return gripper_opened * within_threshold
 
 
 def grasp_reward(

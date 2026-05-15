@@ -32,14 +32,23 @@ def _object_flat_alignment(
     env: ManagerBasedRLEnv,
     object_cfg: SceneEntityCfg = SceneEntityCfg("object"),
 ) -> torch.Tensor:
-    """Return how parallel the object's local +Z axis is to the world +Z axis.
-
-    A value near 1 means the nut lies flat; a value near 0 means it is standing on its side.
-    """
+    """Return how parallel the object's local +Z axis is to the world +Z axis."""
     obj: RigidObject = env.scene[object_cfg.name]
     local_normal = torch.tensor([0.0, 0.0, 1.0], device=env.device).repeat(env.num_envs, 1)
     object_normal_w = quat_apply(obj.data.root_quat_w, local_normal)
     return torch.abs(object_normal_w[:, 2]).clamp(0.0, 1.0)
+
+
+def _object_grasp_target_position_w(
+    env: ManagerBasedRLEnv,
+    grasp_z_offset: float = 0.01,
+    object_cfg: SceneEntityCfg = SceneEntityCfg("object"),
+) -> torch.Tensor:
+    """Return a grasp target slightly above the object's center to reduce side pushes."""
+    obj: RigidObject = env.scene[object_cfg.name]
+    grasp_target_w = obj.data.root_pos_w[:, :3].clone()
+    grasp_target_w[:, 2] += grasp_z_offset
+    return grasp_target_w
 
 
 def _object_within_box_xy(
@@ -62,6 +71,28 @@ def _object_within_box_xy(
     inside_x = (object_xy[:, 0] >= min_corner_xy[:, 0]) & (object_xy[:, 0] <= max_corner_xy[:, 0])
     inside_y = (object_xy[:, 1] >= min_corner_xy[:, 1]) & (object_xy[:, 1] <= max_corner_xy[:, 1])
     return inside_x & inside_y
+
+
+def _command_target_position_w(
+    env: ManagerBasedRLEnv,
+    command_name: str,
+    robot_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+) -> torch.Tensor:
+    """Return the command target position in world coordinates."""
+    robot: RigidObject = env.scene[robot_cfg.name]
+    command = env.command_manager.get_command(command_name)
+    target_pos_b = command[:, :3]
+    target_pos_w, _ = combine_frame_transforms(robot.data.root_pos_w, robot.data.root_quat_w, target_pos_b)
+    return target_pos_w
+
+
+def _lifted_mask(
+    env: ManagerBasedRLEnv,
+    minimal_height: float,
+    object_cfg: SceneEntityCfg = SceneEntityCfg("object"),
+) -> torch.Tensor:
+    obj: RigidObject = env.scene[object_cfg.name]
+    return obj.data.root_pos_w[:, 2] > minimal_height
 
 
 def waypoint_hold_bonus(env: ManagerBasedRLEnv, command_name: str = "transport_target") -> torch.Tensor:
@@ -111,16 +142,10 @@ def object_ee_distance(
     ee_frame_cfg: SceneEntityCfg = SceneEntityCfg("ee_frame"),
 ) -> torch.Tensor:
     """Reward the agent for reaching the object using tanh-kernel."""
-    # extract the used quantities (to enable type-hinting)
     object: RigidObject = env.scene[object_cfg.name]
     ee_frame: FrameTransformer = env.scene[ee_frame_cfg.name]
-    # Target object position: (num_envs, 3)
-    cube_pos_w = object.data.root_pos_w
-    # End-effector position: (num_envs, 3)
     ee_w = ee_frame.data.target_pos_w[..., 0, :]
-    # Distance of the end-effector to the object: (num_envs,)
-    object_ee_distance = torch.norm(cube_pos_w - ee_w, dim=1)
-
+    object_ee_distance = torch.norm(object.data.root_pos_w - ee_w, dim=1)
     return 1 - torch.tanh(object_ee_distance / std)
 
 
@@ -187,7 +212,7 @@ def object_flat_orientation_reward(
     env: ManagerBasedRLEnv,
     object_cfg: SceneEntityCfg = SceneEntityCfg("object"),
 ) -> torch.Tensor:
-    """Reward keeping the nut flat instead of tipping it upright."""
+    """Reward keeping the tall object upright during approach and transport."""
     return _object_flat_alignment(env, object_cfg=object_cfg)
 
 
@@ -261,20 +286,133 @@ def grasp_reward(
     object: RigidObject = env.scene[object_cfg.name]
     ee_frame: FrameTransformer = env.scene[ee_frame_cfg.name]
     robot: RigidObject = env.scene[robot_cfg.name]
-    
-    # Get distance from EE to object
     object_pos_w = object.data.root_pos_w
     ee_pos_w = ee_frame.data.target_pos_w[..., 0, :]
     distance = torch.norm(object_pos_w - ee_pos_w, dim=1)
-    
-    # Only reward gripper closing when close to object
     near_object = (distance < distance_threshold).float()
-    
-    # Gripper closure: 0.04 is fully open, 0.0 is fully closed
-    gripper_joints = robot.data.joint_pos[:, -1]
-    gripper_closure = 1.0 - torch.clamp(gripper_joints / 0.04, 0.0, 1.0)
-    # gripper_closure = 1.0 - torch.clamp(torch.mean(gripper_joints, dim=1) / 0.04, 0.0, 1.0)
+    gripper_joint = robot.data.joint_pos[:, -1]
+    gripper_closure = 1.0 - torch.clamp(gripper_joint / 0.04, 0.0, 1.0)
     return near_object * gripper_closure
+
+
+def object_angular_speed_penalty(
+    env: ManagerBasedRLEnv,
+    std: float = 0.5,
+    object_cfg: SceneEntityCfg = SceneEntityCfg("object"),
+) -> torch.Tensor:
+    """Penalize angular motion that usually appears right before a tall object tips over."""
+    obj: RigidObject = env.scene[object_cfg.name]
+    angular_speed = torch.norm(obj.data.root_ang_vel_w, dim=1)
+    return torch.tanh(angular_speed / max(std, 1.0e-6))
+
+
+def alignment_xy_reward(
+    env: ManagerBasedRLEnv,
+    std: float,
+    minimal_height: float,
+    command_name: str = "drop_pose",
+    staged_command_name: str = "transport_target",
+    object_cfg: SceneEntityCfg = SceneEntityCfg("object"),
+) -> torch.Tensor:
+    """Reward moving the lifted object laterally over the hole before insertion."""
+    obj: RigidObject = env.scene[object_cfg.name]
+    target_pos_w = _command_target_position_w(env, command_name)
+    xy_distance = torch.norm(target_pos_w[:, :2] - obj.data.root_pos_w[:, :2], dim=1)
+    lifted = _lifted_mask(env, minimal_height, object_cfg=object_cfg).float()
+    align_stage = (~_stage_complete_mask(env, staged_command_name)).float()
+    return lifted * align_stage * (1.0 - torch.tanh(xy_distance / max(std, 1.0e-6)))
+
+
+def alignment_height_reward(
+    env: ManagerBasedRLEnv,
+    z_std: float,
+    xy_gate_std: float,
+    minimal_height: float,
+    command_name: str = "drop_pose",
+    staged_command_name: str = "transport_target",
+    object_cfg: SceneEntityCfg = SceneEntityCfg("object"),
+) -> torch.Tensor:
+    """Reward holding the lifted object at the pre-insertion hover height once XY is aligned."""
+    obj: RigidObject = env.scene[object_cfg.name]
+    target_pos_w = _command_target_position_w(env, command_name)
+    xy_distance = torch.norm(target_pos_w[:, :2] - obj.data.root_pos_w[:, :2], dim=1)
+    z_error = torch.abs(target_pos_w[:, 2] - obj.data.root_pos_w[:, 2])
+    lifted = _lifted_mask(env, minimal_height, object_cfg=object_cfg).float()
+    align_stage = (~_stage_complete_mask(env, staged_command_name)).float()
+    xy_gate = torch.exp(-xy_distance / max(xy_gate_std, 1.0e-6))
+    return lifted * align_stage * xy_gate * torch.exp(-z_error / max(z_std, 1.0e-6))
+
+
+def alignment_upright_reward(
+    env: ManagerBasedRLEnv,
+    minimal_height: float,
+    staged_command_name: str = "transport_target",
+    object_cfg: SceneEntityCfg = SceneEntityCfg("object"),
+) -> torch.Tensor:
+    """Reward keeping the object upright during the alignment stage."""
+    lifted = _lifted_mask(env, minimal_height, object_cfg=object_cfg).float()
+    align_stage = (~_stage_complete_mask(env, staged_command_name)).float()
+    return lifted * align_stage * _object_flat_alignment(env, object_cfg=object_cfg)
+
+
+def insertion_xy_reward(
+    env: ManagerBasedRLEnv,
+    std: float,
+    command_name: str = "box_pose",
+    staged_command_name: str = "transport_target",
+    object_cfg: SceneEntityCfg = SceneEntityCfg("object"),
+) -> torch.Tensor:
+    """Reward keeping the object centered over the hole during insertion."""
+    obj: RigidObject = env.scene[object_cfg.name]
+    target_pos_w = _command_target_position_w(env, command_name)
+    xy_distance = torch.norm(target_pos_w[:, :2] - obj.data.root_pos_w[:, :2], dim=1)
+    insert_stage = _stage_complete_mask(env, staged_command_name).float()
+    return insert_stage * (1.0 - torch.tanh(xy_distance / max(std, 1.0e-6)))
+
+
+def insertion_depth_reward(
+    env: ManagerBasedRLEnv,
+    z_std: float,
+    xy_gate_std: float,
+    command_name: str = "box_pose",
+    staged_command_name: str = "transport_target",
+    object_cfg: SceneEntityCfg = SceneEntityCfg("object"),
+) -> torch.Tensor:
+    """Reward lowering the aligned object into the hole."""
+    obj: RigidObject = env.scene[object_cfg.name]
+    target_pos_w = _command_target_position_w(env, command_name)
+    xy_distance = torch.norm(target_pos_w[:, :2] - obj.data.root_pos_w[:, :2], dim=1)
+    z_error = torch.abs(target_pos_w[:, 2] - obj.data.root_pos_w[:, 2])
+    insert_stage = _stage_complete_mask(env, staged_command_name).float()
+    xy_gate = torch.exp(-xy_distance / max(xy_gate_std, 1.0e-6))
+    upright_gate = _object_flat_alignment(env, object_cfg=object_cfg)
+    return insert_stage * xy_gate * upright_gate * torch.exp(-z_error / max(z_std, 1.0e-6))
+
+
+def insertion_stability_reward(
+    env: ManagerBasedRLEnv,
+    xy_threshold: float,
+    z_threshold: float,
+    linear_vel_std: float,
+    angular_vel_std: float,
+    command_name: str = "box_pose",
+    staged_command_name: str = "transport_target",
+    object_cfg: SceneEntityCfg = SceneEntityCfg("object"),
+) -> torch.Tensor:
+    """Reward the object being inserted stably without wobble."""
+    obj: RigidObject = env.scene[object_cfg.name]
+    target_pos_w = _command_target_position_w(env, command_name)
+    xy_distance = torch.norm(target_pos_w[:, :2] - obj.data.root_pos_w[:, :2], dim=1)
+    z_distance = torch.abs(target_pos_w[:, 2] - obj.data.root_pos_w[:, 2])
+    near_target = ((xy_distance < xy_threshold) & (z_distance < z_threshold)).float()
+    linear_speed = torch.norm(obj.data.root_lin_vel_w, dim=1)
+    angular_speed = torch.norm(obj.data.root_ang_vel_w, dim=1)
+    stable_motion = torch.exp(-linear_speed / max(linear_vel_std, 1.0e-6)) * torch.exp(
+        -angular_speed / max(angular_vel_std, 1.0e-6)
+    )
+    insert_stage = _stage_complete_mask(env, staged_command_name).float()
+    upright_gate = _object_flat_alignment(env, object_cfg=object_cfg)
+    return insert_stage * near_target * stable_motion * upright_gate
 
 
 def grasp_reward_new(

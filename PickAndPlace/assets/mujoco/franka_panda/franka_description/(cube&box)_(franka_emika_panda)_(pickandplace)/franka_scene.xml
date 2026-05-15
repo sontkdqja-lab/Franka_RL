@@ -1,0 +1,19 @@
+<mujoco model="franka_scene">
+  <option timestep="0.002" gravity="0 0 -9.81" integrator="implicitfast" iterations="50" />
+  <visual>
+    <map znear="0.005" zfar="10" />
+  </visual>
+  <worldbody>
+    <light name="sun" mode="fixed" pos="1.0 -1.0 2.0" dir="-0.3 0.2 -1.0" />
+    <camera name="overview" pos="1.0 -1.0 0.8" xyaxes="1 0 0 0 0 1" />
+    <geom name="ground" type="box" pos="0 0 -1.06" size="2 2 0.01" rgba="0.2 0.2 0.2 1" friction="1 0.01 0.001" contype="1" conaffinity="1" />
+    <geom name="table_top" type="box" pos="0.5 0 -0.025" size="0.55 0.45 0.025" rgba="0.38 0.3 0.18 1" friction="1 0.01 0.001" contype="1" conaffinity="1" />
+    <geom name="table_leg_front_left" type="box" pos="0.03 0.37 -0.55" size="0.03 0.03 0.5" rgba="0.25 0.25 0.25 1" friction="1 0.01 0.001" contype="1" conaffinity="1" />
+    <geom name="table_leg_front_right" type="box" pos="0.03 -0.37 -0.55" size="0.03 0.03 0.5" rgba="0.25 0.25 0.25 1" friction="1 0.01 0.001" contype="1" conaffinity="1" />
+    <geom name="table_leg_back_left" type="box" pos="0.97 0.37 -0.55" size="0.03 0.03 0.5" rgba="0.25 0.25 0.25 1" friction="1 0.01 0.001" contype="1" conaffinity="1" />
+    <geom name="table_leg_back_right" type="box" pos="0.97 -0.37 -0.55" size="0.03 0.03 0.5" rgba="0.25 0.25 0.25 1" friction="1 0.01 0.001" contype="1" conaffinity="1" />
+  </worldbody>
+</mujoco>
+
+
+

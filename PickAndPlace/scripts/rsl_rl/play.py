@@ -34,6 +34,14 @@ parser.add_argument(
     help="Use the pre-trained checkpoint from Nucleus.",
 )
 parser.add_argument("--real-time", action="store_true", default=False, help="Run in real-time, if possible.")
+parser.add_argument(
+    "--fixed_cube_xy",
+    type=float,
+    nargs=2,
+    default=None,
+    metavar=("X", "Y"),
+    help="Optional fixed cube XY position for play. Overrides the task reset grid for the object.",
+)
 # append RSL-RL cli arguments
 cli_args.add_rsl_rl_args(parser)
 # append AppLauncher cli args
@@ -106,6 +114,13 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     # note: certain randomizations occur in the environment initialization so we set the seed here
     env_cfg.seed = agent_cfg.seed
     env_cfg.sim.device = args_cli.device if args_cli.device is not None else env_cfg.sim.device
+    if args_cli.fixed_cube_xy is not None and hasattr(env_cfg, "events") and hasattr(env_cfg.events, "reset_object_position"):
+        fixed_x, fixed_y = (float(args_cli.fixed_cube_xy[0]), float(args_cli.fixed_cube_xy[1]))
+        env_cfg.events.reset_object_position.params["grid_x"] = [fixed_x]
+        env_cfg.events.reset_object_position.params["grid_y"] = [fixed_y]
+        env_cfg.events.reset_object_position.params["pose_range"] = {"z": (0.0, 0.0)}
+        env_cfg.events.reset_object_position.params["velocity_range"] = {}
+        print(f"[INFO] Fixed cube XY for play: x={fixed_x}, y={fixed_y}")
 
     # specify directory for logging experiments
     log_root_path = os.path.join("logs", "rsl_rl", agent_cfg.experiment_name)
@@ -192,6 +207,9 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
 
     # reset environment
     obs = env.get_observations()
+    cube = env.unwrapped.scene["object"]
+    print("cube default mass:", cube.data.default_mass[0].item())
+    print("cube runtime mass:", cube.root_physx_view.get_masses()[0, 0].item())
     timestep = 0
     # simulate environment
     while simulation_app.is_running():
@@ -201,7 +219,9 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
             # agent stepping
             actions = policy(obs)
             # env stepping
-            print("policy action:", actions[0,-1])
+            # print("policy action:", actions[0,-1])
+            print("cube default mass:", cube.data.default_mass[0].item())
+            print("cube runtime mass:", cube.root_physx_view.get_masses()[0, 0].item())
             obs, _, dones, _ = env.step(actions)
             # reset recurrent states for episodes that have terminated
             policy.reset(dones)

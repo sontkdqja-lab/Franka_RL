@@ -1,12 +1,8 @@
-# Copyright (c) 2022-2025, The Isaac Lab Project Developers (https://github.com/isaac-sim/IsaacLab/blob/main/CONTRIBUTORS.md).
-# All rights reserved.
-#
-# SPDX-License-Identifier: BSD-3-Clause
 import math
 from pathlib import Path
 
 import isaaclab.sim as sim_utils
-from isaaclab.assets import ArticulationCfg, AssetBaseCfg
+from isaaclab.assets import ArticulationCfg, AssetBaseCfg, RigidObjectCfg
 from isaaclab.envs import ManagerBasedRLEnvCfg
 from isaaclab.managers import ActionTermCfg as ActionTerm
 from isaaclab.managers import CurriculumTermCfg as CurrTerm
@@ -18,57 +14,66 @@ from isaaclab.managers import SceneEntityCfg
 from isaaclab.managers import TerminationTermCfg as DoneTerm
 from isaaclab.scene import InteractiveSceneCfg
 from isaaclab.sim.converters import MeshConverter, MeshConverterCfg
-from isaaclab.sim.schemas.schemas_cfg import ConvexDecompositionPropertiesCfg, MassPropertiesCfg
+from isaaclab.sim.schemas.schemas_cfg import (
+    ConvexDecompositionPropertiesCfg,
+    MassPropertiesCfg,
+    RigidBodyPropertiesCfg,
+)
 from isaaclab.sim.spawners.from_files.from_files_cfg import GroundPlaneCfg, UsdFileCfg
+from isaaclab.sensors import CameraCfg
+from isaaclab.sensors.frame_transformer.frame_transformer_cfg import FrameTransformerCfg, OffsetCfg
 from isaaclab.utils import configclass
 from isaaclab.utils.assets import ISAAC_NUCLEUS_DIR
 
 from isaaclab_assets import FRANKA_PANDA_CFG  # isort: skip
 from isaaclab.markers.config import FRAME_MARKER_CFG  # isort: skip
-from isaaclab.assets import RigidObjectCfg
-from isaaclab.sim.schemas.schemas_cfg import RigidBodyPropertiesCfg
-from isaaclab.sensors import CameraCfg
-from isaaclab.sensors.frame_transformer.frame_transformer_cfg import FrameTransformerCfg
-from isaaclab.sensors.frame_transformer.frame_transformer_cfg import OffsetCfg
+
 from . import mdp
 
 
-# Half-scale nut dimensions.
-NUT_OUTER_RADIUS = 0.02
-NUT_INNER_RADIUS = 0.011
-NUT_THICKNESS = 0.03
-NUT_START_Z = NUT_THICKNESS * 0.5
+OBJECT_RADIUS = 0.02
+OBJECT_HEIGHT = 0.06
+OBJECT_START_Z = OBJECT_HEIGHT * 0.5
+ROBOT_START_JOINT_POS = {
+    "panda_joint1": 0.0,
+    "panda_joint2": -0.569,
+    "panda_joint3": 0.0,
+    "panda_joint4": -2.810,
+    "panda_joint5": 0.0,
+    "panda_joint6": 3.037,
+    "panda_joint7": 0.741,
+}
+GRIPPER_GRASP_FINGER_POS = 0.012
+OBJECT_GRASP_OFFSET_B = (0.0, 0.0, 0.025)
+OBJECT_GRASP_ROT_EULER_DEG = (0.0, 0.0, 0.0)
 LIFT_MINIMAL_HEIGHT = 0.04
+
 TARGET_PLATE_CENTER_X = 0.58
 TARGET_PLATE_CENTER_Y = -0.36
 TARGET_PLATE_SIZE = 0.14
 TARGET_PLATE_THICKNESS = 0.01
 TARGET_PLATE_CENTER_Z = TARGET_PLATE_THICKNESS * 0.5
-# Keep a similar clearance ratio between the peg and the circular nut hole.
-TARGET_PEG_RADIUS = 0.008
-TARGET_PEG_HEIGHT = 0.04
-TARGET_PEG_CENTER_Z = TARGET_PLATE_THICKNESS + TARGET_PEG_HEIGHT * 0.5
-TARGET_NUT_REST_Z = TARGET_PLATE_THICKNESS + NUT_THICKNESS * 0.5
+TARGET_HOLE_RADIUS = OBJECT_RADIUS + 0.002
+TARGET_OBJECT_REST_Z = OBJECT_HEIGHT * 0.5
 
-# Keep the copied pick-and-place term names wired to the new peg-in-hole geometry.
 TARGET_BOX_CENTER_X = TARGET_PLATE_CENTER_X
 TARGET_BOX_CENTER_Y = TARGET_PLATE_CENTER_Y
 TARGET_BOX_INNER_SIZE = TARGET_PLATE_SIZE
 TARGET_BOX_FLOOR_THICKNESS = TARGET_PLATE_THICKNESS
 TARGET_BOX_FLOOR_CENTER_Z = TARGET_PLATE_CENTER_Z
 TARGET_BOX_OUTER_SPAN = TARGET_PLATE_SIZE
-TARGET_BOX_PLACE_Z = TARGET_NUT_REST_Z
+TARGET_BOX_PLACE_Z = TARGET_OBJECT_REST_Z
 
 
-def _write_octagonal_nut_mesh(
+def _write_square_plate_with_hole_mesh(
     file_path: Path,
-    outer_radius: float,
-    inner_radius: float,
+    plate_size: float,
+    hole_radius: float,
     thickness: float,
-    outer_sides: int = 8,
     inner_sides: int = 128,
 ) -> None:
-    """Create an octagonal ring mesh with a high-resolution circular inner hole as a Wavefront OBJ."""
+    """Create a square plate mesh with a circular through-hole as a Wavefront OBJ."""
+    outer_sides = 4
     if inner_sides % outer_sides != 0:
         raise ValueError("inner_sides must be divisible by outer_sides for sector triangulation.")
 
@@ -76,8 +81,14 @@ def _write_octagonal_nut_mesh(
 
     top_z = thickness * 0.5
     bottom_z = -top_z
-    outer_angle_offset = math.pi / outer_sides
     sector_ratio = inner_sides // outer_sides
+    half_extent = plate_size * 0.5
+    outer_xy = [
+        (-half_extent, -half_extent),
+        (half_extent, -half_extent),
+        (half_extent, half_extent),
+        (-half_extent, half_extent),
+    ]
 
     vertices: list[tuple[float, float, float]] = []
     outer_top: list[int] = []
@@ -89,17 +100,14 @@ def _write_octagonal_nut_mesh(
         vertices.append((x, y, z))
         return len(vertices) - 1
 
-    for i in range(outer_sides):
-        angle = outer_angle_offset + 2.0 * math.pi * i / outer_sides
-        x = outer_radius * math.cos(angle)
-        y = outer_radius * math.sin(angle)
+    for x, y in outer_xy:
         outer_top.append(add_vertex(x, y, top_z))
         outer_bottom.append(add_vertex(x, y, bottom_z))
 
     for i in range(inner_sides):
         angle = 2.0 * math.pi * i / inner_sides
-        x = inner_radius * math.cos(angle)
-        y = inner_radius * math.sin(angle)
+        x = hole_radius * math.cos(angle)
+        y = hole_radius * math.sin(angle)
         inner_top.append(add_vertex(x, y, top_z))
         inner_bottom.append(add_vertex(x, y, bottom_z))
 
@@ -112,7 +120,6 @@ def _write_octagonal_nut_mesh(
         add_triangle(a, b, c)
         add_triangle(a, c, d)
 
-    # Outer and inner cylindrical walls.
     for i in range(outer_sides):
         i_next = (i + 1) % outer_sides
         add_quad(outer_bottom[i], outer_bottom[i_next], outer_top[i_next], outer_top[i])
@@ -121,7 +128,6 @@ def _write_octagonal_nut_mesh(
         i_next = (i + 1) % inner_sides
         add_quad(inner_bottom[i], inner_top[i], inner_top[i_next], inner_bottom[i_next])
 
-    # Top and bottom annular faces, sector by sector.
     for i in range(outer_sides):
         i_next = (i + 1) % outer_sides
         inner_start = i * sector_ratio
@@ -139,42 +145,37 @@ def _write_octagonal_nut_mesh(
             add_triangle(bottom_sector[0], bottom_sector[j], bottom_sector[j + 1])
 
     with file_path.open("w", encoding="ascii") as f:
-        f.write("# Auto-generated octagonal nut mesh for Frankapeginhole_new\n")
+        f.write("# Auto-generated square plate with circular hole mesh for Frankapeginhole_new\n")
         for x, y, z in vertices:
             f.write(f"v {x:.8f} {y:.8f} {z:.8f}\n")
         for a, b, c in faces:
             f.write(f"f {a + 1} {b + 1} {c + 1}\n")
 
 
-def _get_nut_usd_path() -> str:
-    """Generate and convert the nut mesh into a USD asset for the new task."""
+def _get_target_plate_usd_path() -> str:
     asset_root = Path(__file__).resolve().parent / "assets" / "generated"
-    obj_path = asset_root / "octagonal_nut.obj"
+    obj_path = asset_root / "target_plate_with_hole.obj"
     usd_dir = asset_root / "usd"
 
-    _write_octagonal_nut_mesh(
+    _write_square_plate_with_hole_mesh(
         obj_path,
-        outer_radius=NUT_OUTER_RADIUS,
-        inner_radius=NUT_INNER_RADIUS,
-        thickness=NUT_THICKNESS,
+        plate_size=TARGET_PLATE_SIZE,
+        hole_radius=TARGET_HOLE_RADIUS,
+        thickness=TARGET_PLATE_THICKNESS,
     )
 
     converter = MeshConverter(
         MeshConverterCfg(
             asset_path=str(obj_path),
             usd_dir=str(usd_dir),
-            usd_file_name="octagonal_nut.usd",
+            usd_file_name="target_plate_with_hole.usd",
             make_instanceable=True,
             force_usd_conversion=True,
             rigid_props=RigidBodyPropertiesCfg(
-                solver_position_iteration_count=16,
-                solver_velocity_iteration_count=1,
-                max_angular_velocity=1000.0,
-                max_linear_velocity=1000.0,
-                max_depenetration_velocity=5.0,
-                disable_gravity=False,
+                kinematic_enabled=True,
+                disable_gravity=True,
             ),
-            mass_props=MassPropertiesCfg(mass=0.05),
+            mass_props=MassPropertiesCfg(mass=1.0),
             collision_props=sim_utils.CollisionPropertiesCfg(),
             mesh_collision_props=ConvexDecompositionPropertiesCfg(),
         )
@@ -182,7 +183,7 @@ def _get_nut_usd_path() -> str:
     return converter.usd_path
 
 
-NUT_USD_PATH = _get_nut_usd_path()
+TARGET_PLATE_USD_PATH = _get_target_plate_usd_path()
 
 
 def make_main_camera_cfg() -> CameraCfg:
@@ -247,6 +248,8 @@ class FrankaSceneCfg(InteractiveSceneCfg):
 
     # robots
     robot: ArticulationCfg = FRANKA_PANDA_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
+    robot.init_state.joint_pos.update(ROBOT_START_JOINT_POS)
+    robot.init_state.joint_pos["panda_finger_joint.*"] = GRIPPER_GRASP_FINGER_POS
 
     table = AssetBaseCfg(
         prim_path="{ENV_REGEX_NS}/Table",
@@ -256,11 +259,23 @@ class FrankaSceneCfg(InteractiveSceneCfg):
 
     # objects
     object = RigidObjectCfg(
-        prim_path="{ENV_REGEX_NS}/Nut",
-        init_state=RigidObjectCfg.InitialStateCfg(pos=[0.45, 0, NUT_START_Z], rot=[1, 0, 0, 0]),
-        spawn=UsdFileCfg(
-            usd_path=NUT_USD_PATH,
-            visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.76, 0.65, 0.22), metallic=0.35),
+        prim_path="{ENV_REGEX_NS}/Object",
+        init_state=RigidObjectCfg.InitialStateCfg(pos=[0.45, 0, OBJECT_START_Z], rot=[1, 0, 0, 0]),
+        spawn=sim_utils.CylinderCfg(
+            radius=OBJECT_RADIUS,
+            height=OBJECT_HEIGHT,
+            axis="Z",
+            rigid_props=RigidBodyPropertiesCfg(
+                solver_position_iteration_count=16,
+                solver_velocity_iteration_count=1,
+                max_angular_velocity=1000.0,
+                max_linear_velocity=1000.0,
+                max_depenetration_velocity=5.0,
+                disable_gravity=False,
+            ),
+            collision_props=sim_utils.CollisionPropertiesCfg(),
+            physics_material=sim_utils.RigidBodyMaterialCfg(static_friction=1.0, dynamic_friction=1.0),
+            visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.11, 0.68, 0.46), metallic=0.2),
         ),
     )
 
@@ -270,28 +285,9 @@ class FrankaSceneCfg(InteractiveSceneCfg):
             pos=[TARGET_BOX_CENTER_X, TARGET_BOX_CENTER_Y, TARGET_BOX_FLOOR_CENTER_Z],
             rot=[1.0, 0.0, 0.0, 0.0],
         ),
-        spawn=sim_utils.CuboidCfg(
-            size=[TARGET_BOX_OUTER_SPAN, TARGET_BOX_OUTER_SPAN, TARGET_BOX_FLOOR_THICKNESS],
-            rigid_props=RigidBodyPropertiesCfg(kinematic_enabled=True, disable_gravity=True),
-            collision_props=sim_utils.CollisionPropertiesCfg(),
-            physics_material=sim_utils.RigidBodyMaterialCfg(static_friction=1.0, dynamic_friction=1.0),
+        spawn=UsdFileCfg(
+            usd_path=TARGET_PLATE_USD_PATH,
             visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.72, 0.70, 0.62), metallic=0.05),
-        ),
-    )
-
-    target_peg = RigidObjectCfg(
-        prim_path="{ENV_REGEX_NS}/TargetPeg",
-        init_state=RigidObjectCfg.InitialStateCfg(
-            pos=[TARGET_PLATE_CENTER_X, TARGET_PLATE_CENTER_Y, TARGET_PEG_CENTER_Z],
-            rot=[1.0, 0.0, 0.0, 0.0],
-        ),
-        spawn=sim_utils.CylinderCfg(
-            radius=TARGET_PEG_RADIUS,
-            height=TARGET_PEG_HEIGHT,
-            rigid_props=RigidBodyPropertiesCfg(kinematic_enabled=True, disable_gravity=True),
-            collision_props=sim_utils.CollisionPropertiesCfg(),
-            physics_material=sim_utils.RigidBodyMaterialCfg(static_friction=1.0, dynamic_friction=1.0),
-            visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.42, 0.46, 0.55), metallic=0.45),
         ),
     )
 
@@ -338,7 +334,6 @@ class FrankaSceneCfg(InteractiveSceneCfg):
 class CommandsCfg:
     """Command terms for the MDP."""
 
-    # Existing tabletop target reused as the intermediate waypoint.
     drop_pose = mdp.UniformPoseCommandCfg(
         asset_name="robot",
         body_name="panda_hand",
@@ -393,12 +388,6 @@ class ActionsCfg:
         scale=0.5,
         use_default_offset=True,
     )
-    gripper_action: ActionTerm = mdp.BinaryJointPositionActionCfg(
-        asset_name="robot",
-        joint_names=["panda_finger.*"],
-        open_command_expr={"panda_finger_.*": 0.04},
-        close_command_expr={"panda_finger_.*": 0.0},
-    )
 
 
 @configclass
@@ -432,18 +421,34 @@ class ObservationsCfg:
 class EventCfg:
     """Configuration for events."""
 
-    reset_all = EventTerm(func=mdp.reset_scene_to_default, mode="reset")
-
-    reset_object_position = EventTerm(
-        func=mdp.reset_root_state_uniform,
-        mode="reset",
+    physics_material_object = EventTerm(
+        func=mdp.randomize_rigid_body_material,
+        mode="startup",
         params={
-            "pose_range": {"x": (-0.05, 0.05), "y": (-0.05, 0.05), "z": (0.0, 0.0)},
-            "velocity_range": {},
             "asset_cfg": SceneEntityCfg("object"),
+            "static_friction_range": (1.0, 1.0),
+            "dynamic_friction_range": (1.0, 1.0),
+            "restitution_range": (0.0, 0.0),
+            "num_buckets": 1,
         },
     )
-    # "pose_range": {"x": (-0.1, 0.1), "y": (-0.25, 0.25), "z": (0.0, 0.0)}
+
+    reset_all = EventTerm(func=mdp.reset_scene_to_default, mode="reset")
+
+    reset_object_grasped = EventTerm(
+        func=mdp.reset_cylinder_in_gripper,
+        mode="reset",
+        params={
+            "asset_cfg": SceneEntityCfg("object"),
+            "hand_body_name": "panda_hand",
+            "left_finger_body_name": "panda_leftfinger",
+            "right_finger_body_name": "panda_rightfinger",
+            "gripper_joint_expr": "panda_finger_joint.*",
+            "gripper_joint_pos": GRIPPER_GRASP_FINGER_POS,
+            "object_offset_b": OBJECT_GRASP_OFFSET_B,
+            "object_rot_euler_xyz_deg": OBJECT_GRASP_ROT_EULER_DEG,
+        },
+    )
 
 
 
@@ -451,46 +456,18 @@ class EventCfg:
 class RewardsCfg:
     """Reward terms for the MDP."""
 
-    # Stage 1: Reaching
-    reaching_object = RewTerm(
-        func=mdp.object_ee_distance, params={"std": 0.1}, weight=1.0
-    ) 
+    reaching_object = RewTerm(func=mdp.object_ee_distance, params={"std": 0.1}, weight=1.0)
 
-    
-
-    # Stage 2: Grasping
     grasping_object = RewTerm(
         func=mdp.grasp_reward,
-        params={
-            "distance_threshold": 0.04,
-        },
-        weight=5.0
+        params={"distance_threshold": 0.04},
+        weight=5.0,
     )
 
-    flat_orientation = RewTerm(
-        func=mdp.object_flat_orientation_reward,
-        weight=2.0,
-    )
-
-    grasp_flat_orientation = RewTerm(
-        func=mdp.grasp_flat_orientation_reward,
-        params={"distance_threshold": 0.05},
-        weight=3.0,
-    )
-
-
-    # Stage 3: Lifting
     lifting_object = RewTerm(
         func=mdp.object_is_lifted, params={"minimal_height": LIFT_MINIMAL_HEIGHT}, weight=10.0
     )
 
-    lifted_flat_orientation = RewTerm(
-        func=mdp.lifted_flat_orientation_reward,
-        params={"minimal_height": LIFT_MINIMAL_HEIGHT},
-        weight=6.0,
-    )
-
-    # Stage 4: Transport (multi-scale for better gradients)
     object_goal_tracking_coarse = RewTerm(
         func=mdp.object_goal_distance,
         params={"std": 0.5, "minimal_height": LIFT_MINIMAL_HEIGHT, "command_name": "transport_target"},
@@ -531,97 +508,12 @@ class RewardsCfg:
         weight=-8.0,
     )
 
-    # Stage 5: Placement (height-aware)
-    placement_reward = RewTerm(
-        func=mdp.placement_height_reward,
-        params={"xy_threshold": 0.02, "target_height_offset": 0.02, "command_name": "transport_target"},
-        weight=15.0,
-    )
-
-    # Stage 6: Release
-    release_reward = RewTerm(
-        func=mdp.release_reward,
-        params={
-            "xy_threshold": 0.02,
-            "height_threshold": 0.02,
-            "command_name": "transport_target",
-        },
-        weight=150.0,
-    )
-
-    in_box_grasp_penalty = RewTerm(
-        func=mdp.gripper_hold_in_box_penalty,
-        params={
-            "target_xy_threshold": 0.003,
-            "target_height_threshold": 0.003,
-            "command_name": "box_pose",
-            "staged_command_name": "transport_target",
-        },
-        weight=-80.0,
-    )
-    
-    # # Stage 7: True placed success
-    # placed_success_reward = RewTerm(
-    #     func=mdp.placed_success_reward_new,
-    #     params={
-    #         "placed_height_offset": TARGET_BOX_PLACE_Z - TARGET_BOX_FLOOR_CENTER_Z,
-    #         "z_threshold": 0.02,
-    #         "linear_vel_threshold": 0.05,
-    #         "angular_vel_threshold": 0.10,
-    #         "min_open_fraction": 0.75,
-    #         "ee_object_distance_threshold": 0.06,
-    #         "box_inner_size": TARGET_BOX_INNER_SIZE,
-    #         "command_name": "transport_target",
-    #     },
-    #     weight=40.0,
-    # )
-
-    # dropped_reward = RewTerm(
-    #     func=mdp.drop_object_reward,
-    #     params={"distance_threshold": 0.10, "command_name": "drop_pose"},
-    #     weight=10.0,
-    # )
-
-    # reward_reach = RewTerm(
-    #     mdp.reward_stage_reach,
-    #     weight=1.0,
-    # )
-
-    # rew_lift = RewTerm(
-    #     mdp.reward_stage_lift,
-    #     params={"min_height": 0.04},
-    #     weight=0.0,
-    # )
-
-    # rew_transport = RewTerm(
-    #     mdp.reward_stage_transport,
-    #     params={"std": 0.2,"min_height": 0.04, "command_name": "drop_pose"},
-    #     weight=0.0,
-    # )
-
-    # rew_transport_fine_grained = RewTerm(
-    #     mdp.reward_stage_transport,
-    #     params={"std": 0.05,"min_height": 0.04, "command_name": "drop_pose"},
-    #     weight=0.0,
-    # )
-
-    # rew_place = RewTerm(
-    #     mdp.reward_stage_place,
-    #     params={"distance_threshold": 0.03, "command_name": "drop_pose"},
-    #     weight=0.0,
-    # )
-
-    # --- PENALTIES --- #
     action_rate = RewTerm(func=mdp.action_rate_l2, weight=-1e-3)
     joint_vel = RewTerm(
         func=mdp.joint_vel_l2,
         weight=-1e-3,
         params={"asset_cfg": SceneEntityCfg("robot")},
     )
-
-
-
-
 
 @configclass
 class TerminationsCfg:
@@ -637,8 +529,6 @@ class TerminationsCfg:
             "z_threshold": 0.02,
             "linear_vel_threshold": 0.05,
             "angular_vel_threshold": 0.10,
-            "orientation_threshold": 0.90,
-            # "gripper_open_threshold": 0.03,
         },
     )
 
@@ -647,18 +537,6 @@ class TerminationsCfg:
 class CurriculumCfg:
     """Curriculum terms for the MDP."""
 
-    # Gradually increase placement and release rewards as training progresses
-    placement_weight = CurrTerm(
-        func=mdp.modify_reward_weight,
-        params={"term_name": "placement_reward", "weight": 30.0, "num_steps": 15000},
-    )
-
-    release_weight = CurrTerm(
-        func=mdp.modify_reward_weight,
-        params={"term_name": "release_reward", "weight": 40.0, "num_steps": 25000},
-    )
-
-    # Gradually increase action penalties to encourage smooth motion
     action_rate = CurrTerm(
         func=mdp.modify_reward_weight,
         params={"term_name": "action_rate", "weight": -5e-2, "num_steps": 20000},

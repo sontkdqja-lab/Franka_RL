@@ -48,9 +48,9 @@ TARGET_BOX_PLACE_Z = TARGET_BOX_FLOOR_THICKNESS + CUBE_START_Z
 def make_main_camera_cfg() -> CameraCfg:
     return CameraCfg(
         prim_path="{ENV_REGEX_NS}/Robot/panda_hand/main_camera",
-        update_period=4,
-        height=256,
-        width=256,
+        update_period=0.02,
+        height=64,
+        width=64,
         data_types=["rgb"],
         spawn=sim_utils.PinholeCameraCfg(
             focal_length=24.0,
@@ -70,9 +70,9 @@ def make_main_camera_cfg() -> CameraCfg:
 def make_sub_camera_cfg() -> CameraCfg:
     return CameraCfg(
         prim_path="{ENV_REGEX_NS}/SubCamera",
-        update_period=4,
-        height=256,
-        width=256,
+        update_period=0.02,
+        height=64,
+        width=64,
         data_types=["rgb"],
         spawn=sim_utils.PinholeCameraCfg(
             focal_length=24.0,
@@ -366,28 +366,28 @@ class EventCfg:
 
     reset_all = EventTerm(func=mdp.reset_scene_to_default, mode="reset")
 
-    reset_object_position = EventTerm(
-        func=mdp.reset_root_state_uniform,
-        mode="reset",
-        params={
-            "pose_range": {"x": (-0.1, 0.1), "y": (-0.25, 0.25), "z": (0.0, 0.0)},
-            "velocity_range": {},
-            "asset_cfg": SceneEntityCfg("object"),
-        },
-    )
-    # "pose_range": {"x": (-0.1, 0.1), "y": (-0.25, 0.25), "z": (0.0, 0.0)}
-
     # reset_object_position = EventTerm(
-    #     func=mdp.reset_root_state_on_grid,
+    #     func=mdp.reset_root_state_uniform,
     #     mode="reset",
     #     params={
-    #         "grid_x": [0.40, 0.45, 0.50],
-    #         "grid_y": [-0.10, 0.00, 0.10],
-    #         "pose_range": {"z": (0.0, 0.0)},
+    #         "pose_range": {"x": (-0.1, 0.1), "y": (-0.25, 0.25), "z": (0.0, 0.0)},
     #         "velocity_range": {},
     #         "asset_cfg": SceneEntityCfg("object"),
     #     },
     # )
+    # "pose_range": {"x": (-0.1, 0.1), "y": (-0.25, 0.25), "z": (0.0, 0.0)}
+
+    reset_object_position = EventTerm(
+        func=mdp.reset_root_state_on_grid,
+        mode="reset",
+        params={
+            "grid_x": [ 0.40],
+            "grid_y": [-0.10],
+            "pose_range": {"z": (0.0, 0.0)},
+            "velocity_range": {},
+            "asset_cfg": SceneEntityCfg("object"),
+        },
+    )
 
 
 
@@ -459,33 +459,33 @@ class RewardsCfg:
     )
 
     # Stage 5: Placement (height-aware)
-    # placement_reward = RewTerm(
-    #     func=mdp.placement_height_reward,
-    #     params={"xy_threshold": 0.02, "target_height_offset": 0.02, "command_name": "transport_target"},
-    #     weight=15.0,
+    placement_reward = RewTerm(
+        func=mdp.placement_height_reward,
+        params={"xy_threshold": 0.02, "target_height_offset": 0.02, "command_name": "transport_target"},
+        weight=15.0,
+    )
+
+    # # Stage 6: Release
+    # release_reward = RewTerm(
+    #     func=mdp.release_reward,
+    #     params={
+    #         "xy_threshold": 0.02,
+    #         "height_threshold": 0.02,
+    #         "command_name": "transport_target",
+    #     },
+    #     weight=40.0,
     # )
 
-    # Stage 6: Release
-    release_reward = RewTerm(
-        func=mdp.release_reward,
-        params={
-            "xy_threshold": 0.02,
-            "height_threshold": 0.02,
-            "command_name": "transport_target",
-        },
-        weight=40.0,
-    )
-
-    in_box_grasp_penalty = RewTerm(
-        func=mdp.gripper_hold_in_box_penalty,
-        params={
-            "target_xy_threshold": 0.003,
-            "target_height_threshold": 0.003,
-            "command_name": "box_pose",
-            "staged_command_name": "transport_target",
-        },
-        weight=-80.0,
-    )
+    # in_box_grasp_penalty = RewTerm(
+    #     func=mdp.gripper_hold_in_box_penalty,
+    #     params={
+    #         "target_xy_threshold": 0.003,
+    #         "target_height_threshold": 0.003,
+    #         "command_name": "box_pose",
+    #         "staged_command_name": "transport_target",
+    #     },
+    #     weight=-80.0,
+    # )
     
     # # Stage 7: True placed success
     # placed_success_reward = RewTerm(
@@ -539,10 +539,10 @@ class RewardsCfg:
     # )
 
     # --- PENALTIES --- #
-    action_rate = RewTerm(func=mdp.action_rate_l2, weight=-1e-3)
+    action_rate = RewTerm(func=mdp.action_rate_l2, weight=-5e-3)
     joint_vel = RewTerm(
         func=mdp.joint_vel_l2,
-        weight=-1e-3,
+        weight=-5e-3,
         params={"asset_cfg": SceneEntityCfg("robot")},
     )
 
@@ -564,7 +564,7 @@ class TerminationsCfg:
             "z_threshold": 0.02,
             "linear_vel_threshold": 0.05,
             "angular_vel_threshold": 0.10,
-            "gripper_open_threshold": 0.03,
+            "gripper_open_threshold": 0.01,
         },
     )
 
@@ -574,15 +574,15 @@ class CurriculumCfg:
     """Curriculum terms for the MDP."""
 
     # Gradually increase placement and release rewards as training progresses
-    # placement_weight = CurrTerm(
-    #     func=mdp.modify_reward_weight,
-    #     params={"term_name": "placement_reward", "weight": 30.0, "num_steps": 15000},
-    # )
-
-    release_weight = CurrTerm(
+    placement_weight = CurrTerm(
         func=mdp.modify_reward_weight,
-        params={"term_name": "release_reward", "weight": 40.0, "num_steps": 25000},
+        params={"term_name": "placement_reward", "weight": 30.0, "num_steps": 15000},
     )
+
+    # release_weight = CurrTerm(
+    #     func=mdp.modify_reward_weight,
+    #     params={"term_name": "release_reward", "weight": 40.0, "num_steps": 25000},
+    # )
 
     # Gradually increase action penalties to encourage smooth motion
     action_rate = CurrTerm(

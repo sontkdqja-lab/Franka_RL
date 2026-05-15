@@ -1,0 +1,103 @@
+<?xml version='1.0' encoding='utf-8'?>
+<mujoco model="franka_pick_place">
+  <compiler angle="radian" />
+  <asset>
+    <mesh name="link0" content_type="model/stl" file="franka_panda/franka_description/meshes/collision/link0.stl" />
+    <mesh name="link1" content_type="model/stl" file="franka_panda/franka_description/meshes/collision/link1.stl" />
+    <mesh name="link2" content_type="model/stl" file="franka_panda/franka_description/meshes/collision/link2.stl" />
+    <mesh name="link3" content_type="model/stl" file="franka_panda/franka_description/meshes/collision/link3.stl" />
+    <mesh name="link4" content_type="model/stl" file="franka_panda/franka_description/meshes/collision/link4.stl" />
+    <mesh name="link5" content_type="model/stl" file="franka_panda/franka_description/meshes/collision/link5.stl" />
+    <mesh name="link6" content_type="model/stl" file="franka_panda/franka_description/meshes/collision/link6.stl" />
+    <mesh name="link7" content_type="model/stl" file="franka_panda/franka_description/meshes/collision/link7.stl" />
+    <mesh name="hand" content_type="model/stl" file="franka_panda/franka_description/meshes/collision/hand.stl" />
+    <mesh name="finger" content_type="model/stl" file="franka_panda/franka_description/meshes/collision/finger.stl" />
+    <material name="table_mat" rgba="0.38 0.30 0.18 1" />
+    <material name="cube_mat" rgba="0.0 1.0 0.0 1" />
+    <material name="target_floor_mat" rgba="0.72 0.70 0.62 1" />
+    <material name="target_wall_mat" rgba="0.55 0.43 0.28 1" />
+  </asset>
+  <worldbody>
+    <geom type="mesh" mesh="link0" />
+    <body name="panda_link1" pos="0 0 0.333">
+      <inertial pos="0 0 0" mass="2.36" diaginertia="0.0186864 0.014379 0.00906812" />
+      <joint name="panda_joint1" pos="0 0 0" axis="0 0 1" range="-2.8973 2.8973" actuatorfrcrange="-87 87" damping="4" armature="0" />
+      <geom type="mesh" mesh="link1" />
+      <body name="panda_link2" quat="0.707107 -0.707107 0 0">
+        <inertial pos="0 0 0" quat="0.707107 0.707107 0 0" mass="2.37952" diaginertia="0.0190389 0.0146975 0.00914291" />
+        <joint name="panda_joint2" pos="0 0 0" axis="0 0 1" range="-1.7628 1.7628" actuatorfrcrange="-87 87" damping="4" armature="0" />
+        <geom type="mesh" mesh="link2" />
+        <body name="panda_link3" pos="0 -0.316 0" quat="0.707107 0.707107 0 0">
+          <inertial pos="0 0 0" quat="0.5 0.5 0.5 0.5" mass="2.64988" diaginertia="0.0150242 0.0142735 0.01293" />
+          <joint name="panda_joint3" pos="0 0 0" axis="0 0 1" range="-2.8973 2.8973" actuatorfrcrange="-87 87" damping="4" armature="0" />
+          <geom type="mesh" mesh="link3" />
+          <body name="panda_link4" pos="0.0825 0 0" quat="0.707107 0.707107 0 0">
+            <inertial pos="0 0 0" quat="0 0.707107 0 0.707107" mass="2.6948" diaginertia="0.0155176 0.0145143 0.0133875" />
+            <joint name="panda_joint4" pos="0 0 0" axis="0 0 1" range="-3.0718 -0.0698" actuatorfrcrange="-87 87" damping="4" armature="0" />
+            <geom type="mesh" mesh="link4" />
+            <body name="panda_link5" pos="-0.0825 0.384 0" quat="0.707107 -0.707107 0 0">
+              <inertial pos="0 0 0" mass="2.98128" diaginertia="0.0325566 0.027066 0.0115023" />
+              <joint name="panda_joint5" pos="0 0 0" axis="0 0 1" range="-2.8973 2.8973" actuatorfrcrange="-12 12" damping="4" armature="0" />
+              <geom type="mesh" mesh="link5" />
+              <body name="panda_link6" quat="0.707107 0.707107 0 0">
+                <inertial pos="0 0 0" quat="0 0.707107 0 0.707107" mass="1.12858" diaginertia="0.00470486 0.00398972 0.00260526" />
+                <joint name="panda_joint6" pos="0 0 0" axis="0 0 1" range="-0.0175 3.7525" actuatorfrcrange="-12 12" damping="4" armature="0" />
+                <geom type="mesh" mesh="link6" />
+                <body name="panda_link7" pos="0.088 0 0" quat="0.707107 0.707107 0 0">
+                  <inertial pos="0 -0.0619967 0" quat="0.440413 0.440413 -0.553206 0.553206" mass="0.963622" diaginertia="0.00600854 0.00553149 0.00121024" />
+                  <joint name="panda_joint7" pos="0 0 0" axis="0 0 1" range="-2.8973 2.8973" actuatorfrcrange="-12 12" damping="4" armature="0" />
+                  <geom type="mesh" mesh="link7" />
+                  <geom pos="0 0 0.107" quat="0.92388 0 0 -0.382683" type="mesh" mesh="hand" />
+                  <body name="panda_leftfinger" pos="0 0 0.1654" quat="0.92388 0 0 -0.382683">
+                    <inertial pos="0 0 0" mass="0.0140552" diaginertia="4.20413e-06 3.90264e-06 1.33475e-06" />
+                    <joint name="panda_finger_joint1" pos="0 0 0" axis="0 1 0" type="slide" range="0 0.04" actuatorfrcrange="-20 20" damping="100" armature="0" />
+                    <geom type="mesh" mesh="finger" />
+                  </body>
+                  <body name="panda_rightfinger" pos="0 0 0.1654" quat="0.92388 0 0 -0.382683">
+                    <inertial pos="0 0 0" mass="0.0140552" diaginertia="4.20413e-06 3.90264e-06 1.33475e-06" />
+                    <joint name="panda_finger_joint2" pos="0 0 0" axis="0 -1 0" type="slide" range="0 0.04" actuatorfrcrange="-20 20" damping="100" armature="0" />
+                    <geom quat="0 0 0 1" type="mesh" mesh="finger" />
+                  </body>
+                </body>
+              </body>
+            </body>
+          </body>
+        </body>
+      </body>
+    </body>
+    <light name="sun" mode="fixed" pos="1.0 -1.0 2.0" dir="-0.3 0.2 -1.0" />
+    <camera name="overview" pos="1.0 -1.0 0.8" xyaxes="1 0 0 0 0 1" />
+    <geom name="ground" type="box" pos="0 0 -1.06" size="2 2 0.01" rgba="0.2 0.2 0.2 1" friction="1 0.01 0.001" contype="1" conaffinity="1" />
+    <geom name="table_top" type="box" pos="0.5 0 -0.025" size="0.55 0.45 0.025" rgba="0.38 0.3 0.18 1" friction="1 0.01 0.001" contype="1" conaffinity="1" />
+    <geom name="table_leg_front_left" type="box" pos="0.03 0.37 -0.55" size="0.03 0.03 0.5" rgba="0.25 0.25 0.25 1" friction="1 0.01 0.001" contype="1" conaffinity="1" />
+    <geom name="table_leg_front_right" type="box" pos="0.03 -0.37 -0.55" size="0.03 0.03 0.5" rgba="0.25 0.25 0.25 1" friction="1 0.01 0.001" contype="1" conaffinity="1" />
+    <geom name="table_leg_back_left" type="box" pos="0.97 0.37 -0.55" size="0.03 0.03 0.5" rgba="0.25 0.25 0.25 1" friction="1 0.01 0.001" contype="1" conaffinity="1" />
+    <geom name="table_leg_back_right" type="box" pos="0.97 -0.37 -0.55" size="0.03 0.03 0.5" rgba="0.25 0.25 0.25 1" friction="1 0.01 0.001" contype="1" conaffinity="1" />
+    <body name="pick_cube" pos="0.45 0 0.025">
+      <freejoint name="pick_cube_freejoint" />
+      <geom name="pick_cube_geom" type="box" size="0.025 0.025 0.025" rgba="0.0 1.0 0.0 1.0" friction="1 0.01 0.001" contype="1" conaffinity="1" />
+    </body>
+    <geom name="target_box_floor" type="box" pos="0.58 -0.36 0.005" size="0.07 0.07 0.005" rgba="0.72 0.7 0.62 1" friction="1 0.01 0.001" contype="1" conaffinity="1" />
+    <geom name="target_box_left_wall" type="box" pos="0.515 -0.36 0.04" size="0.005 0.07 0.03" rgba="0.55 0.43 0.28 1" friction="1 0.01 0.001" contype="1" conaffinity="1" />
+    <geom name="target_box_right_wall" type="box" pos="0.645 -0.36 0.04" size="0.005 0.07 0.03" rgba="0.55 0.43 0.28 1" friction="1 0.01 0.001" contype="1" conaffinity="1" />
+    <geom name="target_box_front_wall" type="box" pos="0.58 -0.295 0.04" size="0.07 0.005 0.03" rgba="0.55 0.43 0.28 1" friction="1 0.01 0.001" contype="1" conaffinity="1" />
+    <geom name="target_box_back_wall" type="box" pos="0.58 -0.425 0.04" size="0.07 0.005 0.03" rgba="0.55 0.43 0.28 1" friction="1 0.01 0.001" contype="1" conaffinity="1" />
+    <site name="waypoint_marker" type="sphere" pos="0.5 0 0.3" size="0.012" rgba="0.2 0.6 1.0 0.4" />
+    <site name="goal_marker" type="sphere" pos="0.58 -0.36 0.115" size="0.012" rgba="1.0 0.4 0.2 0.4" />
+  </worldbody>
+  <option timestep="0.01" gravity="0 0 -9.81" integrator="implicitfast" iterations="50" />
+  <visual>
+    <map znear="0.01" zfar="10" />
+  </visual>
+  <actuator>
+    <position name="panda_joint1" joint="panda_joint1" kp="80" ctrllimited="true" ctrlrange="-2.8973 2.8973" forcelimited="true" forcerange="-87 87" />
+    <position name="panda_joint2" joint="panda_joint2" kp="80" ctrllimited="true" ctrlrange="-1.7628 1.7628" forcelimited="true" forcerange="-87 87" />
+    <position name="panda_joint3" joint="panda_joint3" kp="80" ctrllimited="true" ctrlrange="-2.8973 2.8973" forcelimited="true" forcerange="-87 87" />
+    <position name="panda_joint4" joint="panda_joint4" kp="80" ctrllimited="true" ctrlrange="-3.0718 -0.0698" forcelimited="true" forcerange="-87 87" />
+    <position name="panda_joint5" joint="panda_joint5" kp="80" ctrllimited="true" ctrlrange="-2.8973 2.8973" forcelimited="true" forcerange="-87 87" />
+    <position name="panda_joint6" joint="panda_joint6" kp="80" ctrllimited="true" ctrlrange="-0.0175 3.7525" forcelimited="true" forcerange="-87 87" />
+    <position name="panda_joint7" joint="panda_joint7" kp="80" ctrllimited="true" ctrlrange="-2.8973 2.8973" forcelimited="true" forcerange="-87 87" />
+    <position name="panda_finger_joint1" joint="panda_finger_joint1" kp="2000" ctrllimited="true" ctrlrange="0 0.04" forcelimited="true" forcerange="-40 40" />
+    <position name="panda_finger_joint2" joint="panda_finger_joint2" kp="2000" ctrllimited="true" ctrlrange="0 0.04" forcelimited="true" forcerange="-40 40" />
+  </actuator>
+</mujoco>

@@ -1,0 +1,119 @@
+<mujocoinclude>
+  <compiler angle="radian" />
+  <asset>
+    <material name="white" rgba="1 1 1 1" specular="0.5" shininess="0.25" />
+    <material name="off_white" rgba="0.901961 0.921569 0.929412 1" specular="0.5" shininess="0.25" />
+    <material name="black" rgba="0.25 0.25 0.25 1" specular="0.5" shininess="0.25" />
+    <material name="green" rgba="0 1 0 1" specular="0.5" shininess="0.25" />
+    <material name="light_blue" rgba="0.039216 0.541176 0.780392 1" specular="0.5" shininess="0.25" />
+    <material name="table_mat" rgba="0.38 0.30 0.18 1" />
+    <material name="cube_mat" rgba="0.0 1.0 0.0 1" />
+    <material name="target_floor_mat" rgba="0.72 0.70 0.62 1" />
+    <material name="target_wall_mat" rgba="0.55 0.43 0.28 1" />
+    <mesh name="link0_c" file="../meshes/collision/link0.stl" />
+    <mesh name="link1_c" file="../meshes/collision/link1.stl" />
+    <mesh name="link2_c" file="../meshes/collision/link2.stl" />
+    <mesh name="link3_c" file="../meshes/collision/link3.stl" />
+    <mesh name="link4_c" file="../meshes/collision/link4.stl" />
+    <mesh name="link5_c0" file="../meshes/collision/link5_collision_0.obj" />
+    <mesh name="link5_c1" file="../meshes/collision/link5_collision_1.obj" />
+    <mesh name="link5_c2" file="../meshes/collision/link5_collision_2.obj" />
+    <mesh name="link6_c" file="../meshes/collision/link6.stl" />
+    <mesh name="link7_c" file="../meshes/collision/link7.stl" />
+    <mesh name="hand_c" file="../meshes/collision/hand.stl" />
+    <mesh name="link0_0" file="../meshes/visual/link0_0.obj" />
+    <mesh name="link0_1" file="../meshes/visual/link0_1.obj" />
+    <mesh name="link0_2" file="../meshes/visual/link0_2.obj" />
+    <mesh name="link0_3" file="../meshes/visual/link0_3.obj" />
+    <mesh name="link0_4" file="../meshes/visual/link0_4.obj" />
+    <mesh name="link0_5" file="../meshes/visual/link0_5.obj" />
+    <mesh name="link0_7" file="../meshes/visual/link0_7.obj" />
+    <mesh name="link0_8" file="../meshes/visual/link0_8.obj" />
+    <mesh name="link0_9" file="../meshes/visual/link0_9.obj" />
+    <mesh name="link0_10" file="../meshes/visual/link0_10.obj" />
+    <mesh name="link0_11" file="../meshes/visual/link0_11.obj" />
+    <mesh name="link1_v" file="../meshes/visual/link1.obj" />
+    <mesh name="link2_v" file="../meshes/visual/link2.obj" />
+    <mesh name="link3_0" file="../meshes/visual/link3_0.obj" />
+    <mesh name="link3_1" file="../meshes/visual/link3_1.obj" />
+    <mesh name="link3_2" file="../meshes/visual/link3_2.obj" />
+    <mesh name="link3_3" file="../meshes/visual/link3_3.obj" />
+    <mesh name="link4_0" file="../meshes/visual/link4_0.obj" />
+    <mesh name="link4_1" file="../meshes/visual/link4_1.obj" />
+    <mesh name="link4_2" file="../meshes/visual/link4_2.obj" />
+    <mesh name="link4_3" file="../meshes/visual/link4_3.obj" />
+    <mesh name="link5_0" file="../meshes/visual/link5_0.obj" />
+    <mesh name="link5_1" file="../meshes/visual/link5_1.obj" />
+    <mesh name="link5_2" file="../meshes/visual/link5_2.obj" />
+    <mesh name="link6_0" file="../meshes/visual/link6_0.obj" />
+    <mesh name="link6_1" file="../meshes/visual/link6_1.obj" />
+    <mesh name="link6_2" file="../meshes/visual/link6_2.obj" />
+    <mesh name="link6_3" file="../meshes/visual/link6_3.obj" />
+    <mesh name="link6_4" file="../meshes/visual/link6_4.obj" />
+    <mesh name="link6_5" file="../meshes/visual/link6_5.obj" />
+    <mesh name="link6_6" file="../meshes/visual/link6_6.obj" />
+    <mesh name="link6_7" file="../meshes/visual/link6_7.obj" />
+    <mesh name="link6_8" file="../meshes/visual/link6_8.obj" />
+    <mesh name="link6_9" file="../meshes/visual/link6_9.obj" />
+    <mesh name="link6_10" file="../meshes/visual/link6_10.obj" />
+    <mesh name="link6_11" file="../meshes/visual/link6_11.obj" />
+    <mesh name="link6_12" file="../meshes/visual/link6_12.obj" />
+    <mesh name="link6_13" file="../meshes/visual/link6_13.obj" />
+    <mesh name="link6_14" file="../meshes/visual/link6_14.obj" />
+    <mesh name="link6_15" file="../meshes/visual/link6_15.obj" />
+    <mesh name="link6_16" file="../meshes/visual/link6_16.obj" />
+    <mesh name="link7_0" file="../meshes/visual/link7_0.obj" />
+    <mesh name="link7_1" file="../meshes/visual/link7_1.obj" />
+    <mesh name="link7_2" file="../meshes/visual/link7_2.obj" />
+    <mesh name="link7_3" file="../meshes/visual/link7_3.obj" />
+    <mesh name="link7_4" file="../meshes/visual/link7_4.obj" />
+    <mesh name="link7_5" file="../meshes/visual/link7_5.obj" />
+    <mesh name="link7_6" file="../meshes/visual/link7_6.obj" />
+    <mesh name="link7_7" file="../meshes/visual/link7_7.obj" />
+    <mesh name="hand_0" file="../meshes/visual/hand_0.obj" />
+    <mesh name="hand_1" file="../meshes/visual/hand_1.obj" />
+    <mesh name="hand_2" file="../meshes/visual/hand_2.obj" />
+    <mesh name="hand_3" file="../meshes/visual/hand_3.obj" />
+    <mesh name="hand_4" file="../meshes/visual/hand_4.obj" />
+    <mesh name="finger_0" file="../meshes/visual/finger_0.obj" />
+    <mesh name="finger_1" file="../meshes/visual/finger_1.obj" />
+  </asset>
+  <contact>
+    <exclude body1="panda_link1" body2="panda_link2" />
+    <exclude body1="panda_link1" body2="panda_link3" />
+    <exclude body1="panda_link1" body2="panda_link4" />
+    <exclude body1="panda_link1" body2="panda_link5" />
+    <exclude body1="panda_link1" body2="panda_link6" />
+    <exclude body1="panda_link1" body2="panda_link7" />
+    <exclude body1="panda_link1" body2="panda_leftfinger" />
+    <exclude body1="panda_link1" body2="panda_rightfinger" />
+    <exclude body1="panda_link2" body2="panda_link3" />
+    <exclude body1="panda_link2" body2="panda_link4" />
+    <exclude body1="panda_link2" body2="panda_link5" />
+    <exclude body1="panda_link2" body2="panda_link6" />
+    <exclude body1="panda_link2" body2="panda_link7" />
+    <exclude body1="panda_link2" body2="panda_leftfinger" />
+    <exclude body1="panda_link2" body2="panda_rightfinger" />
+    <exclude body1="panda_link3" body2="panda_link4" />
+    <exclude body1="panda_link3" body2="panda_link5" />
+    <exclude body1="panda_link3" body2="panda_link6" />
+    <exclude body1="panda_link3" body2="panda_link7" />
+    <exclude body1="panda_link3" body2="panda_leftfinger" />
+    <exclude body1="panda_link3" body2="panda_rightfinger" />
+    <exclude body1="panda_link4" body2="panda_link5" />
+    <exclude body1="panda_link4" body2="panda_link6" />
+    <exclude body1="panda_link4" body2="panda_link7" />
+    <exclude body1="panda_link4" body2="panda_leftfinger" />
+    <exclude body1="panda_link4" body2="panda_rightfinger" />
+    <exclude body1="panda_link5" body2="panda_link6" />
+    <exclude body1="panda_link5" body2="panda_link7" />
+    <exclude body1="panda_link5" body2="panda_leftfinger" />
+    <exclude body1="panda_link5" body2="panda_rightfinger" />
+    <exclude body1="panda_link6" body2="panda_link7" />
+    <exclude body1="panda_link6" body2="panda_leftfinger" />
+    <exclude body1="panda_link6" body2="panda_rightfinger" />
+    <exclude body1="panda_link7" body2="panda_leftfinger" />
+    <exclude body1="panda_link7" body2="panda_rightfinger" />
+    <exclude body1="panda_leftfinger" body2="panda_rightfinger" />
+  </contact>
+</mujocoinclude>

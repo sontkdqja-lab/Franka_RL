@@ -117,6 +117,7 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     # override configurations with non-hydra CLI arguments
     agent_cfg = cli_args.update_rsl_rl_cfg(agent_cfg, args_cli)
     agent_cfg = handle_deprecated_rsl_rl_cfg(agent_cfg, installed_version)
+    task_name = args_cli.task.split(":")[-1] if args_cli.task else agent_cfg.experiment_name
     env_cfg.scene.num_envs = args_cli.num_envs if args_cli.num_envs is not None else env_cfg.scene.num_envs
     agent_cfg.max_iterations = (
         args_cli.max_iterations if args_cli.max_iterations is not None else agent_cfg.max_iterations
@@ -165,8 +166,11 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
             ) from exc
         os.environ.setdefault("WANDB_DIR", log_dir)
         os.environ.setdefault("WANDB_INIT_TIMEOUT", "300")
+        os.environ.setdefault("WANDB_RUN_GROUP", task_name)
+        os.environ.setdefault("WANDB_JOB_TYPE", "train")
         print(
             f"[INFO] W&B logging enabled. project={agent_cfg.wandb_project}, "
+            f"group={os.environ['WANDB_RUN_GROUP']}, "
             f"run_name={agent_cfg.run_name or log_dir.split(os.sep)[-1]}"
         )
 
